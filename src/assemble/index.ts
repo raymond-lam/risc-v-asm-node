@@ -29,8 +29,6 @@ import { safeInteger } from '#utils/integer';
 type AssembleOptions = Readonly<{
   format?: string;
   baseAddress?: number | string;
-  march?: string;
-  mabi?: string;
   defsym?: readonly string[];
 }>;
 
@@ -78,16 +76,6 @@ const validateAssembleOptions = (options: AssembleOptions): ValidatedOptions => 
     throw new Error(`Unsupported format "${format}"; currently use binary or ihex`);
   }
 
-  const march = options.march ?? 'rv64i';
-  if (march !== 'rv64i' && march !== 'rv64im') {
-    throw new Error(`Unsupported -march="${march}"; currently use rv64i or rv64im`);
-  }
-
-  const mabi = options.mabi ?? 'lp64';
-  if (mabi !== 'lp64') {
-    throw new Error(`Unsupported -mabi="${mabi}"; currently use lp64`);
-  }
-
   let baseAddress = 0;
   if (options.baseAddress !== undefined) {
     if (typeof options.baseAddress === 'number') {
@@ -119,7 +107,7 @@ const validateAssembleOptions = (options: AssembleOptions): ValidatedOptions => 
  * symbol layout, and encoding begin when the returned generator is iterated.
  *
  * @param input - Assembly source text, or file paths read in array order.
- * @param options - Output format, address, ISA/ABI, and predefined symbols.
+ * @param options - Output format, address, and predefined symbols.
  * @yields Encoded binary chunks or UTF-8 Intel HEX records in source order.
  */
 export async function* assemble(

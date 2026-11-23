@@ -1,11 +1,11 @@
 # risc-v-asm
 
-A lightweight ESM-only TypeScript library and GNU-`as`-like CLI for assembling
+A lightweight ESM-only TypeScript library and command-line assembler for
 a strict **RV64I/RV64M** flat-assembler subset of RISC-V. It provides
 instruction encoding, label resolution, pseudo-instruction expansion, and Intel
 HEX output.
 
-**This is not a full GNU assembler.** There is no ELF object output, linker
+**This is a focused flat-output assembler.** There is no ELF object output, linker
 relaxation, compressed instructions, assembler directives, relocation support,
 floating-point or vector instructions, or debug information.
 
@@ -57,28 +57,27 @@ At least one source path is required. Standard input and `-` input paths are
 
 ### Options
 
-| Option                     | Description                                               | Default  |
-| -------------------------- | --------------------------------------------------------- | -------- |
-| `-o, --output <objfile>`   | Output file; `-o -` writes to stdout                      | `a.out`  |
-| `--format <format>`        | Output format: `binary`, `ihex`, or `elf` (error)         | `binary` |
-| `--base-address <address>` | Flat-output origin; does **not** pad the binary           | `0`      |
-| `-march <isa>`             | ISA: `rv64i` or `rv64im`                                  | `rv64i`  |
-| `-mabi <abi>`              | ABI: `lp64` only                                          | `lp64`   |
-| `--defsym <symbol=value>`  | Define a nonnegative integer absolute symbol (repeatable) | —        |
-| `-v, --verbose`            | Print version and continue assembling                     | —        |
-| `--target-help`            | Print RISC-V target options and exit 0                    | —        |
-| `--version` / `-version`   | Print version and exit 0                                  | —        |
-| `--help`                   | Print help and exit 0                                     | —        |
+| Option                     | Description                                               | Default |
+| -------------------------- | --------------------------------------------------------- | ------- |
+| `-o, --output <objfile>`   | Output file; `-o -` writes to stdout                      | `a.out` |
+| `--format <format>`        | Output format: `binary`, `ihex`, or `elf` (error)         | `elf`   |
+| `--base-address <address>` | Flat-output origin; does **not** pad the binary           | `0`     |
+| `--defsym <symbol=value>`  | Define a nonnegative integer absolute symbol (repeatable) | —       |
+| `--target-help`            | Print RISC-V target options and exit 0                    | —       |
+| `--version` / `-version`   | Print version and exit 0                                  | —       |
+| `--help`                   | Print help and exit 0                                     | —       |
 
-**GNU-compatible normalization** is applied to supported forms such as
-`-march=rv64im`, `-mabi=lp64`, `-mno-relax`, `-fno-pic`, `-oFILE`, and
-`-version`.
+Supported option spellings are normalized, including `-mno-relax`, `-fno-pic`, `-oFILE`, and `-version`.
 
-### Required overrides for GNU defaults
+The default output format is `elf`, matching the default object format of a
+native assembler. ELF output is not implemented, so a successful invocation
+must choose `--format=binary` or `--format=ihex` explicitly.
 
-GNU `as` defaults to relaxation, ELF architecture attributes, and CSR checking,
-but those features are unsupported. Their default flags remain registered, so
-assembly requires these explicit supported overrides:
+### Required overrides for unsupported defaults
+
+Relaxation, ELF architecture attributes, and CSR checking are enabled by
+default but are not implemented. Assembly therefore requires these explicit
+overrides:
 
 ```sh
 -mno-relax -mno-arch-attr -mno-csr-check
@@ -110,20 +109,18 @@ end:
 ```
 
 ```sh
-# Assemble to flat binary (default output: a.out)
-risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check test.s
+# Assemble to a flat binary (default output: a.out)
+risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check --format=binary test.s
 
 # Intel HEX output
 risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check --format=ihex -o firmware.ihex test.s
 
 # Write to stdout
-risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check -o - test.s
+risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check --format=binary -o - test.s
 
 # Specify base address and define a symbol
-risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check --base-address=0x1000 --defsym=base=0x200 test.s
+risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check --format=binary --base-address=0x1000 --defsym=base=0x200 test.s
 
-# Verbose
-risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check -v test.s
 ```
 
 ---
@@ -183,7 +180,7 @@ Registers can be written as `x0`–`x31` or by their ABI names:
 
 ### Address operands
 
-Memory operands use the GNU Assembler `offset(base)` syntax:
+Memory operands use the `offset(base)` syntax:
 
 ```asm
 ld   x1, 8(x2)       # x1 = *(x2 + 8)
@@ -232,71 +229,13 @@ immediate. Larger values expand to a deterministic sequence of `addi` and
 
 ---
 
-## Supported instructions
+## Instruction coverage
 
-### RV64I (default `-march=rv64i`)
-
-**Arithmetic:** `add`, `sub`, `sll`, `slt`, `sltu`, `xor`, `srl`, `sra`, `or`,
-`and`, `addw`, `subw`, `sllw`, `srlw`, `sraw`
-
-**Immediate arithmetic:** `addi`, `slti`, `sltiu`, `xori`, `ori`, `andi`,
-`addiw`
-
-**Shift immediates** (0–63): `slli`, `srli`, `srai`
-
-**Shift word immediates** (0–31): `slliw`, `srliw`, `sraiw`
-
-**Load:** `lb`, `lh`, `lw`, `ld`, `lbu`, `lhu`, `lwu`
-
-**Store:** `sb`, `sh`, `sw`, `sd`
-
-**Branches:** `beq`, `bne`, `blt`, `bge`, `bltu`, `bgeu`
-
-**Jump / link:** `jal`, `jalr`
-
-**Upper immediate / PC-relative:** `lui`, `auipc`
-
-**Miscellaneous:** `fence`, `ecall`, `ebreak`
-
-### RV64M (with `-march=rv64im`)
-
-**Multiply / divide / remainder:** `mul`, `mulh`, `mulhsu`, `mulhu`, `div`,
-`divu`, `rem`, `remu`, `mulw`, `divw`, `divuw`, `remw`, `remuw`
-
-### Pseudo-instructions
-
-| Mnemonic              | Expansion                     |
-| --------------------- | ----------------------------- |
-| `nop`                 | `addi x0, x0, 0`              |
-| `mv rd, rs`           | `addi rd, rs, 0`              |
-| `not rd, rs`          | `xori rd, rs, -1`             |
-| `neg rd, rs`          | `sub rd, x0, rs`              |
-| `negw rd, rs`         | `subw rd, x0, rs`             |
-| `sext.w rd, rs`       | `addiw rd, rs, 0`             |
-| `seqz rd, rs`         | `sltiu rd, rs, 1`             |
-| `snez rd, rs`         | `sltu rd, x0, rs`             |
-| `sltz rd, rs`         | `slt rd, rs, x0`              |
-| `sgtz rd, rs`         | `slt rd, x0, rs`              |
-| `sgt rd, rs, rt`      | `slt rd, rt, rs` (reversed)   |
-| `sgtu rd, rs, rt`     | `sltu rd, rt, rs` (reversed)  |
-| `li rd, imm`          | Load immediate (numeric only) |
-| `j offset`            | `jal x0, offset`              |
-| `jr rs`               | `jalr x0, rs, 0`              |
-| `ret`                 | `jalr x0, ra, 0`              |
-| `beqz rs, offset`     | `beq rs, x0, offset`          |
-| `bnez rs, offset`     | `bne rs, x0, offset`          |
-| `blez rs, offset`     | `bge x0, rs, offset`          |
-| `bgez rs, offset`     | `bge rs, x0, offset`          |
-| `bltz rs, offset`     | `blt rs, x0, offset`          |
-| `bgtz rs, offset`     | `blt x0, rs, offset`          |
-| `bgt rs, rt, offset`  | `blt rt, rs, offset`          |
-| `ble rs, rt, offset`  | `bge rt, rs, offset`          |
-| `bgtu rs, rt, offset` | `bltu rt, rs, offset`         |
-| `bleu rs, rt, offset` | `bgeu rt, rs, offset`         |
-
-Branch pseudo-instructions with two register operands take `rs, rt` (source,
-target) and a branch target offset. All pseudo-instructions produce 4-byte
-encodings except `li`, which may expand to up to 44 bytes for large immediates.
+The encoder table covers the ratified RV64 instruction families, including
+base integer, compressed, atomic, floating-point, vector, cryptographic,
+bit-manipulation, hypervisor, and privileged/system instructions. Common
+assembler aliases and pseudo-instructions are also included. RV32-only
+encodings are outside the scope of this package.
 
 ---
 
@@ -322,11 +261,9 @@ be written above the 32-bit address space (4 GiB).
 
 Unsupported ISA, ABI, and ELF output values receive descriptive errors:
 
-| Feature                                | Error                                |
-| -------------------------------------- | ------------------------------------ |
-| `--format=elf`                         | ELF object output is not implemented |
-| `-march` other than `rv64i` / `rv64im` | Unsupported ISA                      |
-| `-mabi` other than `lp64`              | Unsupported ABI                      |
+| Feature        | Error                                |
+| -------------- | ------------------------------------ |
+| `--format=elf` | ELF object output is not implemented |
 
 Other unimplemented flags such as `--mbig-endian`, `-I`, `-g`, `--fpic`, and
 warning-control flags are not registered and are rejected as unknown options.
@@ -381,8 +318,6 @@ A source label overrides a same-named `defsym` definition.
 | ------------- | ------------------- | -------- | ----------------------------------------------------------------------------- |
 | `format`      | `string`            | `binary` | `binary` emits instruction bytes; `ihex` emits Intel HEX records; `elf` fails |
 | `baseAddress` | `number \| string`  | `0`      | Address of the first instruction; nonnegative safe integer                    |
-| `march`       | `string`            | `rv64i`  | ISA selection; `rv64i` or `rv64im`                                            |
-| `mabi`        | `string`            | `lp64`   | ABI selection; `lp64` only                                                    |
 | `defsym`      | `readonly string[]` | `[]`     | Repeatable `symbol=value` definitions                                         |
 
 String `baseAddress` and `defsym` values accept the same syntax as source
@@ -412,7 +347,6 @@ import { assemble } from 'risc-v-asm';
 
 const output = assemble(['startup.s', 'main.s'], {
   baseAddress: '0x8000_0000',
-  march: 'rv64im',
   defsym: ['stack_top=0x8001_0000'],
 });
 for await (const chunk of output) {

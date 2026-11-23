@@ -24,12 +24,20 @@ import { runCli as runCliCommand } from '#bin';
 
 const SUPPORTED_DEFAULT_OVERRIDES = ['--mno-relax', '--mno-arch-attr', '--mno-csr-check'];
 
-/** Run the CLI with the required supported overrides for GNU's unsupported defaults. */
+/** Run the CLI with explicit binary output and the required supported overrides. */
 const runCli = (
   argv: readonly string[],
   io?: Parameters<typeof runCliCommand>[1]
-): Promise<number> =>
-  runCliCommand([argv[0]!, argv[1]!, ...SUPPORTED_DEFAULT_OVERRIDES, ...argv.slice(2)], io);
+): Promise<number> => {
+  const hasFormat = argv.some(
+    (argument) => argument === '--format' || argument.startsWith('--format=')
+  );
+  const format = hasFormat ? [] : ['--format=binary'];
+  return runCliCommand(
+    [argv[0]!, argv[1]!, ...SUPPORTED_DEFAULT_OVERRIDES, ...format, ...argv.slice(2)],
+    io
+  );
+};
 
 /** Create a temporary directory and return its path, throwing on failure. */
 let dirCounter = 0;
@@ -114,18 +122,17 @@ test('CLI --target-help prints target options and exits 0', async () => {
   const { io, outChunks } = testIo();
   const exitCode = await runCli(['node', 'risc-v-asm', '--target-help'], io);
   assert.strictEqual(exitCode, 0);
-  assert.match(outChunks.join(''), /march/);
+  assert.match(outChunks.join(''), /mrelax/);
 });
 
-test('CLI -v prints version and continues', async () => {
-  const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
-  const outFile = jn(dir, 'a.out');
-  await writeFile(testFile, 'nop\n');
-  const { io, outChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '-v', '-o', outFile, testFile], io);
-  assert.strictEqual(exitCode, 0);
-  assert.match(outChunks.join(''), /risc-v-asm 0\.0\.0/);
+test('CLI default format is ELF and fails until overridden', async () => {
+  const { io, errChunks } = testIo();
+  const exitCode = await runCliCommand(
+    ['node', 'risc-v-asm', ...SUPPORTED_DEFAULT_OVERRIDES, '-o', '-', 'nonexistent.s'],
+    io
+  );
+  assert.strictEqual(exitCode, 1);
+  assert.match(errChunks.join(''), /ELF object output is not implemented/);
 });
 
 test('CLI basic assembly produces output file', async () => {
@@ -187,25 +194,15 @@ test('CLI with --defsym', async () => {
   assert.ok(readFileSync(outFile).length > 0);
 });
 
-test('CLI with unsupported march returns 1', async () => {
-  const { io, errChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '-march=rv64g', 'nonexistent.s'], io);
-  assert.strictEqual(exitCode, 1);
-  assert.match(errChunks.join(''), /rv64g/);
-});
-
-test('CLI with unsupported mabi returns 1', async () => {
-  const { io, errChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '-mabi=ilp32', 'nonexistent.s'], io);
-  assert.strictEqual(exitCode, 1);
-  assert.match(errChunks.join(''), /mabi/);
-});
-
 test('CLI unregistered options fail as unknown options', async () => {
   for (const flag of [
     '--mbig-endian',
     '-mbig-endian',
     '-mrelax=yes',
+    '--march',
+    '-march=rv64im',
+    '--mabi',
+    '-mabi=lp64',
     '--g',
     '-g',
     '--keep-locals',
@@ -220,6 +217,8 @@ test('CLI unregistered options fail as unknown options', async () => {
     '--include',
     '-Ifoo',
     '--statistics',
+    '-v',
+    '--verbose',
   ]) {
     const { io, errChunks } = testIo();
     const exitCode = await runCli(['node', 'risc-v-asm', flag], io);
@@ -249,7 +248,7 @@ test('CLI requires overrides for unsupported GNU defaults', async () => {
   await writeFile(input, 'nop');
   const { io, outChunks } = testIo();
   const exitCode = await runCliCommand(
-    ['node', 'risc-v-asm', ...SUPPORTED_DEFAULT_OVERRIDES, '-o', '-', input],
+    ['node', 'risc-v-asm', ...SUPPORTED_DEFAULT_OVERRIDES, '--format=binary', '-o', '-', input],
     io
   );
   assert.strictEqual(exitCode, 0);
@@ -419,52 +418,6 @@ test('IHEX --base-address shifts IHEX addresses but does not pad binary', async 
 // GNU one-dash machine option tests
 // ---------------------------------------------------------------------------
 
-test('GNU one-dash -march=rv64im succeeds', async () => {
-  const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
-  await writeFile(testFile, 'addi x1, x0, 42\n');
-  const exitCode = await runCli([
-    'node',
-    'risc-v-asm',
-    '-march=rv64im',
-    '-o',
-    jn(dir, 'a.out'),
-    testFile,
-  ]);
-  assert.strictEqual(exitCode, 0);
-});
-
-test('GNU one-dash -march=rv64g fails with explicit unsupported message', async () => {
-  const { io, errChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '-march=rv64g', 'nonexistent.s'], io);
-  assert.strictEqual(exitCode, 1);
-  assert.match(errChunks.join(''), /rv64g/);
-  assert.doesNotMatch(errChunks.join(''), /unknown option/);
-});
-
-test('GNU one-dash -mabi=lp64 succeeds', async () => {
-  const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
-  await writeFile(testFile, 'nop\n');
-  const exitCode = await runCli([
-    'node',
-    'risc-v-asm',
-    '-mabi=lp64',
-    '-o',
-    jn(dir, 'a.out'),
-    testFile,
-  ]);
-  assert.strictEqual(exitCode, 0);
-});
-
-test('GNU one-dash -mabi=ilp32 fails with explicit unsupported message', async () => {
-  const { io, errChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '-mabi=ilp32', 'nonexistent.s'], io);
-  assert.strictEqual(exitCode, 1);
-  assert.match(errChunks.join(''), /mabi/);
-  assert.doesNotMatch(errChunks.join(''), /unknown option/);
-});
-
 test('GNU one-dash -mlittle-endian succeeds', async () => {
   const dir = await tempDir();
   const testFile = jn(dir, 'test.s');
@@ -553,22 +506,4 @@ test('IHEX does not cross 64 KiB boundary at base-address=0xFFFF', async () => {
   assert.strictEqual(lines[2], ':020000040001F9');
   assert.strictEqual(lines[3], ':0700000000A0021301B00291');
   assert.strictEqual(lines[4], ':00000001FF');
-});
-
-test('GNU one-dash -march=rv64im and -mabi=lp64 still work', async () => {
-  const dir = await tempDir();
-  const testFile = jn(dir, 'a.s');
-  const outFile = jn(dir, 'a.out');
-  await writeFile(testFile, 'nop\n');
-  const exitCode = await runCli([
-    'node',
-    'risc-v-asm',
-    '-march=rv64im',
-    '-mabi=lp64',
-    '-o',
-    outFile,
-    testFile,
-  ]);
-  assert.strictEqual(exitCode, 0);
-  assert.strictEqual(readFileSync(outFile).length, 4);
 });

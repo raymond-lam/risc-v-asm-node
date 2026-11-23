@@ -25,8 +25,6 @@ type CliOptions = Readonly<{
   output: string;
   format: string;
   baseAddress: string;
-  march: string;
-  mabi: string;
   mrelax: boolean;
   mnoRelax?: boolean;
   marchAttr: boolean;
@@ -34,20 +32,17 @@ type CliOptions = Readonly<{
   mcsrCheck: boolean;
   mnoCsrCheck?: boolean;
   defsym: string[];
-  verbose?: boolean;
   targetHelp?: boolean;
 }>;
 
 const VERSION = packageMetadata.version;
 const TARGET_HELP = `RISC-V options:
-  --march=<isa>              select ISA (currently rv64i or rv64im)
-  --mabi=<abi>               select ABI (currently lp64)
   --mlittle-endian           little-endian output (default)
-  --mrelax                   GNU default; not implemented
+  --mrelax                   default; not implemented
   --mno-relax                disable linker relaxation (required override)
-  --march-attr               GNU default; not implemented
+  --march-attr               default; not implemented
   --mno-arch-attr            suppress ELF arch attributes (required override)
-  --mcsr-check               GNU default; not implemented
+  --mcsr-check               default; not implemented
   --mno-csr-check            disable CSR checking (required override)
   --fno-pic                  non-position-independent code (default)
 `;
@@ -76,10 +71,7 @@ const normalizeArguments = (argv: readonly string[]): string[] =>
   argv.flatMap((argument, index) => {
     if (index < 2) return [argument];
     if (argument === '-version') return ['--version'];
-    // Split the supported GNU one/two-dash ISA and ABI assignments.
-    const machineEq = /^(-{1,2}(m(?:arch|abi)))=(.*)$/.exec(argument);
-    if (machineEq) return [`--${machineEq[2]}`, machineEq[3]!];
-    // Normalize supported GNU one-dash target defaults to their long forms.
+    // Normalize supported one-dash target defaults to their long forms.
     const machineBool =
       /^(-m(?:little-endian|relax|no-relax|arch-attr|no-arch-attr|csr-check|no-csr-check))$/.exec(
         argument
@@ -92,7 +84,7 @@ const normalizeArguments = (argv: readonly string[]): string[] =>
   });
 
 /**
- * Reject unsupported GNU defaults unless their supported overrides were selected.
+ * Reject unsupported defaults unless their supported overrides were selected.
  *
  * @param options - Parsed CLI options.
  * @throws Error for the first unsupported default that lacks an explicit override.
@@ -123,20 +115,17 @@ const createProgram = (io: CliIo): Command => {
     .usage('[options] [file...]')
     .argument('[file...]', 'assembly source files')
     .option('-o, --output <objfile>', 'output file; - writes stdout', 'a.out')
-    .option('--format <format>', 'output format', 'binary')
+    .option('--format <format>', 'output format', 'elf')
     .option('--base-address <address>', 'flat-output origin', '0')
-    .option('--march <isa>', 'ISA selection', 'rv64i')
-    .option('--mabi <abi>', 'ABI selection', 'lp64')
     .option('--mlittle-endian', 'little-endian output (default)', true)
-    .option('--mrelax', 'GNU default; linker relaxation (not implemented)', true)
+    .option('--mrelax', 'default; linker relaxation (not implemented)', true)
     .option('--mno-relax', 'disable linker relaxation (required override)')
-    .option('--march-attr', 'GNU default; ELF arch attributes (not implemented)', true)
+    .option('--march-attr', 'default; ELF arch attributes (not implemented)', true)
     .option('--mno-arch-attr', 'suppress ELF arch attributes (required override)')
-    .option('--mcsr-check', 'GNU default; CSR checking (not implemented)', true)
+    .option('--mcsr-check', 'default; CSR checking (not implemented)', true)
     .option('--mno-csr-check', 'disable CSR checking (required override)')
     .option('--fno-pic', 'non-position-independent code (default)', true)
     .option('--defsym <symbol=value>', 'define an integer symbol', collect, [])
-    .option('-v, --verbose', 'print the assembler version')
     .option('--target-help', 'print RISC-V target options')
     .version(VERSION, '--version', 'print version and exit')
     .exitOverride()
@@ -145,16 +134,6 @@ const createProgram = (io: CliIo): Command => {
       writeErr: (text) => io.stderr.write(text),
     });
   return program;
-};
-
-/**
- * Print the assembler version when verbose mode is active.
- *
- * @param io - Output sinks for the CLI.
- * @param verbose - Whether version output was requested.
- */
-const printVersion = (io: CliIo, verbose?: boolean): void => {
-  if (verbose) io.stdout.write(`risc-v-asm ${VERSION}\n`);
 };
 
 /**
@@ -177,13 +156,10 @@ export const runCli = async (
         return;
       }
       if (files.length === 0) throw new Error('no input files');
-      printVersion(io, options.verbose);
       validateCliOptions(options);
       const assemblyOptions = {
         format: options.format,
         baseAddress: options.baseAddress,
-        march: options.march,
-        mabi: options.mabi,
         defsym: options.defsym,
       };
       const bytes = assemble(files, assemblyOptions);
