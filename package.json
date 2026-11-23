@@ -60,7 +60,7 @@
     "commander": "^15.0.0"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "^26.6.6",
     "esbuild": "^0.28.2",
     "oxlint": "^1.94.0",
     "oxlint-tsgolint": "^7.0.2008",
