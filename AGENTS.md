@@ -84,7 +84,7 @@ async function* assemble(
 
 - This is a **direct async generator**, not a promise for a generator. Consumers use `for await (const chunk of assemble(...))` without awaiting the call itself.
 - A string is always assembly source text. A readonly string array contains file paths; an empty array is empty source and never means stdin.
-- `AssembleOptions` may remain private to `assemble/index.ts`. It contains optional `format`, `baseAddress`, `march`, `mabi`, and `defsym` fields, with the same relevant validation and integer syntax as the CLI. Do not add output, statistics, help, or extra root exports.
+- `AssembleOptions` may remain private to `assemble/index.ts`. It contains optional `format`, `baseAddress`, and `defsym` fields, with the same relevant validation and integer syntax as the CLI. Do not add output, statistics, help, or extra root exports.
 - Validation and both assembly passes run when iteration begins. `assemble` creates a fresh line stream for each pass, awaits internal `buildSymbolTable`, merges predefined symbols before labels so labels override same-name definitions, and encodes the fresh stream.
 - Path arrays are streamed with `createReadStream` and `readline` on each pass. Source strings are split and streamified afresh. Production source must not synchronously open or read files.
 - Binary output yields encoded `Uint8Array` chunks. Intel HEX output also yields `Uint8Array`, containing newline-terminated UTF-8 records, with 16-byte data limits, 64 KiB boundaries, extended addresses, checksums, EOF, and 32-bit range enforcement.
@@ -237,30 +237,28 @@ const parseIntegerLiteral = (text: string): bigint | null
 
 ### Supported output formats
 
-- **`binary`** (default) — flat binary.
+- **`binary`** — flat binary.
+- **`elf`** (default) — rejected unless `--format=binary` or `--format=ihex` is supplied.
 - **`ihex`** — Intel HEX (16-byte max data records, extended-linear-address records, correct checksums, `:00000001FF` EOF; 32-bit address space).
 - **`elf`** — **rejected** with explicit error message ("ELF object output is not implemented").
 
 ### CLI option scope
 
-Non-default unimplemented flags are not registered with Commander and are unknown options. Public assembly validation gives descriptive errors for `--format=elf`, unsupported `-march`, and unsupported `-mabi`.
+Non-default unimplemented flags are not registered with Commander and are unknown options. Public assembly validation gives descriptive errors for `--format=elf`.
 
 GNU's unsupported defaults remain registered and enabled by default: `--mrelax`, `--march-attr`, and `--mcsr-check`. Assembly fails until users explicitly select `--mno-relax`, `--mno-arch-attr`, and `--mno-csr-check`. Supported GNU defaults `--mlittle-endian` and `--fno-pic` remain enabled as no-ops.
 
 ### CLI features
 
 - `-o, --output <objfile>` — default `a.out`; `-o -` writes to stdout
-- `--format <format>` — binary (default), ihex, elf (error)
+- `--format <format>` — elf (default, error), binary, or ihex
 - `--base-address <address>` — flat-output origin (default `0`); does not pad the binary
-- `-march <isa>` — `rv64i` (default) or `rv64im`
-- `-mabi <abi>` — `lp64` only
 - `--defsym <symbol=value>` — repeatable, defines a nonnegative integer absolute symbol
-- `-v, --verbose` — prints version and continues assembling
 - `--mno-relax --mno-arch-attr --mno-csr-check` — required supported overrides for GNU's unsupported defaults
 - `--target-help` — prints RISC-V target options and exits 0
 - `--version` / `-version` — prints version and exits 0
 - `--help` — prints help and exits 0
-- GNU one-dash normalization covers only supported forms such as `-march=rv64im`, `-mabi=lp64`, `-mno-relax`, `-fno-pic`, and `-oFILE`
+- GNU one-dash normalization covers only supported forms such as `-mno-relax`, `-fno-pic`, and `-oFILE`
 
 ### Not supported (and loudly rejected or silently absent)
 
@@ -269,7 +267,7 @@ GNU's unsupported defaults remain registered and enabled by default: `--mrelax`,
 
 ### CLI options vs public assembly validation
 
-Commander rejects unregistered options as unknown options. `validateCliOptions` rejects GNU's unsupported defaults until their three supported overrides are selected. Public `assemble` validates format, base address, ISA, ABI, and defsyms so library and CLI behavior agree. Internal `assembleFlat` remains intentionally permissive.
+Commander rejects unregistered options as unknown options. `validateCliOptions` rejects GNU's unsupported defaults until their three supported overrides are selected. Public `assemble` validates format, base address, and defsyms so library and CLI behavior agree. Internal `assembleFlat` remains intentionally permissive.
 
 ## 9. Coding conventions
 
@@ -330,7 +328,7 @@ Commander rejects unregistered options as unknown options. `validateCliOptions` 
 - Use the `testIo()` helper to produce an in-memory `CliIo` bag.
 - Verify unregistered options fail as unknown options; ISA/ABI/format values retain descriptive errors.
 - Tests that create files use `tempDir()` (creates a unique temporary directory with `tmpdir()` and `mkdir`).
-- Test `--output -` (stdout), `--format=ihex`, `--defsym`, `--target-help`, `-v`, joined `-oFILE` and `-march=rv64im` forms.
+- Test `--output -` (stdout), `--format=binary`, `--format=ihex`, `--defsym`, `--target-help`, and joined `-oFILE` forms.
 
 ### Regression tests
 

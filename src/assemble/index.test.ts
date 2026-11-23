@@ -78,8 +78,6 @@ test('assemble rejects unsupported options during iteration', async () => {
   const invalidOptions = [
     { format: 'elf' },
     { format: 'text' },
-    { march: 'rv64g' },
-    { mabi: 'ilp32' },
     { baseAddress: -1 },
     { baseAddress: '-0x1' },
     { baseAddress: 'not-a-number' },
