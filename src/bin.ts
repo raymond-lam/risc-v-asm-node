@@ -40,10 +40,10 @@ const TARGET_HELP = `RISC-V options:
   --mlittle-endian           little-endian output (default)
   --mrelax                   default; not implemented
   --mno-relax                disable linker relaxation (required override)
-  --march-attr               default; not implemented
-  --mno-arch-attr            suppress ELF arch attributes (required override)
-  --mcsr-check               default; not implemented
-  --mno-csr-check            disable CSR checking (required override)
+  --march-attr               generate ELF arch attributes (not implemented)
+  --mno-arch-attr            do not generate ELF arch attributes (default)
+  --mcsr-check               enable CSR checking (not implemented)
+  --mno-csr-check            disable CSR checking (default)
   --fno-pic                  non-position-independent code (default)
 `;
 
@@ -93,10 +93,10 @@ const validateCliOptions = (options: CliOptions): void => {
   if (!options.mnoRelax) {
     throw new Error('Linker relaxation is not implemented; use -mno-relax');
   }
-  if (!options.mnoArchAttr) {
+  if (options.marchAttr) {
     throw new Error('ELF architecture attributes are not implemented; use -mno-arch-attr');
   }
-  if (!options.mnoCsrCheck) {
+  if (options.mcsrCheck) {
     throw new Error('CSR checking is not implemented; use -mno-csr-check');
   }
 };
@@ -120,10 +120,10 @@ const createProgram = (io: CliIo): Command => {
     .option('--mlittle-endian', 'little-endian output (default)', true)
     .option('--mrelax', 'default; linker relaxation (not implemented)', true)
     .option('--mno-relax', 'disable linker relaxation (required override)')
-    .option('--march-attr', 'default; ELF arch attributes (not implemented)', true)
-    .option('--mno-arch-attr', 'suppress ELF arch attributes (required override)')
-    .option('--mcsr-check', 'default; CSR checking (not implemented)', true)
-    .option('--mno-csr-check', 'disable CSR checking (required override)')
+    .option('--march-attr', 'generate ELF arch attributes (not implemented)')
+    .option('--mno-arch-attr', 'do not generate ELF arch attributes (default)')
+    .option('--mcsr-check', 'enable CSR checking (not implemented)')
+    .option('--mno-csr-check', 'disable CSR checking (default)')
     .option('--fno-pic', 'non-position-independent code (default)', true)
     .option('--defsym <symbol=value>', 'define an integer symbol', collect, [])
     .option('--target-help', 'print RISC-V target options')

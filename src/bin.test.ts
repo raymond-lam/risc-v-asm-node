@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { runCli as runCliCommand } from '#bin';
 
-const SUPPORTED_DEFAULT_OVERRIDES = ['--mno-relax', '--mno-arch-attr', '--mno-csr-check'];
+const SUPPORTED_DEFAULT_OVERRIDES = ['--mno-relax'];
 
 /** Run the CLI with explicit binary output and the required supported overrides. */
 const runCli = (
@@ -227,11 +227,11 @@ test('CLI unregistered options fail as unknown options', async () => {
   }
 });
 
-test('CLI requires overrides for unsupported GNU defaults', async () => {
+test('CLI rejects unsupported explicit defaults', async () => {
   const stages = [
     { args: [], error: /use -mno-relax/ },
-    { args: ['--mno-relax'], error: /use -mno-arch-attr/ },
-    { args: ['--mno-relax', '--mno-arch-attr'], error: /use -mno-csr-check/ },
+    { args: ['--mno-relax', '--march-attr'], error: /use -mno-arch-attr/ },
+    { args: ['--mno-relax', '--mcsr-check'], error: /use -mno-csr-check/ },
   ];
   for (const stage of stages) {
     const { io, errChunks } = testIo();
@@ -248,7 +248,17 @@ test('CLI requires overrides for unsupported GNU defaults', async () => {
   await writeFile(input, 'nop');
   const { io, outChunks } = testIo();
   const exitCode = await runCliCommand(
-    ['node', 'risc-v-asm', ...SUPPORTED_DEFAULT_OVERRIDES, '--format=binary', '-o', '-', input],
+    [
+      'node',
+      'risc-v-asm',
+      ...SUPPORTED_DEFAULT_OVERRIDES,
+      '--mno-arch-attr',
+      '--mno-csr-check',
+      '--format=binary',
+      '-o',
+      '-',
+      input,
+    ],
     io
   );
   assert.strictEqual(exitCode, 0);

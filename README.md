@@ -73,18 +73,17 @@ The default output format is `elf`, matching the default object format of a
 native assembler. ELF output is not implemented, so a successful invocation
 must choose `--format=binary` or `--format=ihex` explicitly.
 
-### Required overrides for unsupported defaults
+### Unsupported defaults and overrides
 
-Relaxation, ELF architecture attributes, and CSR checking are enabled by
-default but are not implemented. Assembly therefore requires these explicit
-overrides:
+Linker relaxation is enabled by default but is not implemented, so assembly
+requires `-mno-relax`.
 
-```sh
--mno-relax -mno-arch-attr -mno-csr-check
-```
+ELF architecture attributes and CSR checking are off by default. Their
+disabling forms `-mno-arch-attr` and `-mno-csr-check` are accepted no-ops.
+Explicitly requesting `--march-attr` or `--mcsr-check` fails because those
+checks are not implemented.
 
-The no-op defaults `--mlittle-endian` and `--fno-pic` are supported and enabled
-by default.
+The no-op defaults `--mlittle-endian` and `--fno-pic` are supported.
 
 ### Exit status
 
@@ -110,16 +109,16 @@ end:
 
 ```sh
 # Assemble to a flat binary (default output: a.out)
-risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check --format=binary test.s
+risc-v-asm -mno-relax --format=binary test.s
 
 # Intel HEX output
-risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check --format=ihex -o firmware.ihex test.s
+risc-v-asm -mno-relax --format=ihex -o firmware.ihex test.s
 
 # Write to stdout
-risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check --format=binary -o - test.s
+risc-v-asm -mno-relax --format=binary -o - test.s
 
 # Specify base address and define a symbol
-risc-v-asm -mno-relax -mno-arch-attr -mno-csr-check --format=binary --base-address=0x1000 --defsym=base=0x200 test.s
+risc-v-asm -mno-relax --format=binary --base-address=0x1000 --defsym=base=0x200 test.s
 
 ```
 
