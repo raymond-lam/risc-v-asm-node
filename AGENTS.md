@@ -246,7 +246,7 @@ const parseIntegerLiteral = (text: string): bigint | null
 
 Non-default unimplemented flags are not registered with Commander and are unknown options. Public assembly validation gives descriptive errors for `--format=elf`.
 
-GNU's unsupported defaults remain registered and enabled by default: `--mrelax`, `--march-attr`, and `--mcsr-check`. Assembly fails until users explicitly select `--mno-relax`, `--mno-arch-attr`, and `--mno-csr-check`. Supported GNU defaults `--mlittle-endian` and `--fno-pic` remain enabled as no-ops.
+Linker relaxation remains enabled by default and is unsupported, so `-mno-relax` is required. Architecture attributes and CSR checking are off by default; `--mno-arch-attr` and `--mno-csr-check` are accepted no-ops, while explicit `--march-attr` or `--mcsr-check` requests fail as unimplemented. Supported defaults `--mlittle-endian` and `--fno-pic` remain enabled as no-ops.
 
 ### CLI features
 
@@ -254,7 +254,9 @@ GNU's unsupported defaults remain registered and enabled by default: `--mrelax`,
 - `--format <format>` — elf (default, error), binary, or ihex
 - `--base-address <address>` — flat-output origin (default `0`); does not pad the binary
 - `--defsym <symbol=value>` — repeatable, defines a nonnegative integer absolute symbol
-- `--mno-relax --mno-arch-attr --mno-csr-check` — required supported overrides for GNU's unsupported defaults
+- `--mno-relax` — required override for unsupported relaxation
+- `--mno-arch-attr` / `--mno-csr-check` — accepted no-op defaults
+- `--march-attr` / `--mcsr-check` — explicit requests rejected as unimplemented
 - `--target-help` — prints RISC-V target options and exits 0
 - `--version` / `-version` — prints version and exits 0
 - `--help` — prints help and exits 0
@@ -267,7 +269,7 @@ GNU's unsupported defaults remain registered and enabled by default: `--mrelax`,
 
 ### CLI options vs public assembly validation
 
-Commander rejects unregistered options as unknown options. `validateCliOptions` rejects GNU's unsupported defaults until their three supported overrides are selected. Public `assemble` validates format, base address, and defsyms so library and CLI behavior agree. Internal `assembleFlat` remains intentionally permissive.
+Commander rejects unregistered options as unknown options. `validateCliOptions` requires `-mno-relax` and rejects explicit architecture-attribute or CSR-checking requests. Public `assemble` validates format, base address, and defsyms so library and CLI behavior agree. Internal `assembleFlat` remains intentionally permissive.
 
 ## 9. Coding conventions
 
