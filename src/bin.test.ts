@@ -12,34 +12,87 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * CLI tests that spawn the actual risc-v-asm binary via tsx so they exercise
+ * the real process boundary rather than importing internal functions.
  */
+
+/* oxlint-disable typescript/no-unsafe-call, typescript/no-unsafe-member-access --
+   node:child_process spawn API types are not fully resolved by oxlint. */
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
-import { runCli as runCliCommand } from '#bin';
 
-const SUPPORTED_DEFAULT_OVERRIDES = ['--mno-relax'];
+const BIN = 'src/bin.ts';
 
-/** Run the CLI with explicit binary output and the required supported overrides. */
-const runCli = (
-  argv: readonly string[],
-  io?: Parameters<typeof runCliCommand>[1]
-): Promise<number> => {
-  const hasFormat = argv.some(
-    (argument) => argument === '--format' || argument.startsWith('--format=')
-  );
-  const format = hasFormat ? [] : ['--format=binary'];
-  return runCliCommand(
-    [argv[0]!, argv[1]!, ...SUPPORTED_DEFAULT_OVERRIDES, ...format, ...argv.slice(2)],
-    io
-  );
+/** Spawn the CLI binary and collect its output. */
+const runCli = async (
+  args: readonly string[]
+): Promise<{
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly stdoutBytes: Uint8Array;
+}> => {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      'npx',
+      ['tsx', '--conditions', '@risc-v-asm/source', BIN, '--mno-relax', ...args],
+      {
+        stdio: [null, 'pipe', 'pipe'],
+        env: { ...process.env },
+        cwd: process.cwd(),
+      }
+    );
+
+    const outBuf: Uint8Array[] = [];
+    const errBuf: Uint8Array[] = [];
+
+    if (child.stdout) {
+      child.stdout.on('data', (chunk: Uint8Array | string) => {
+        outBuf.push(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk);
+      });
+    }
+    if (child.stderr) {
+      child.stderr.on('data', (chunk: Uint8Array | string) => {
+        errBuf.push(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk);
+      });
+    }
+
+    child.on('exit', (exitCode: number | null) => {
+      const stdoutBytes = new Uint8Array(outBuf.reduce((sum, b) => sum + b.length, 0));
+      let offset = 0;
+      for (const b of outBuf) {
+        stdoutBytes.set(b, offset);
+        offset += b.length;
+      }
+
+      const stderrBytes = new Uint8Array(errBuf.reduce((sum, b) => sum + b.length, 0));
+      offset = 0;
+      for (const b of errBuf) {
+        stderrBytes.set(b, offset);
+        offset += b.length;
+      }
+
+      resolve({
+        exitCode: exitCode ?? 1,
+        stdout: new TextDecoder().decode(stdoutBytes),
+        stderr: new TextDecoder().decode(stderrBytes),
+        stdoutBytes,
+      });
+    });
+
+    child.on('error', (err: unknown) => {
+      reject(err instanceof Error ? err : new Error(String(err)));
+    });
+  });
 };
 
-/** Create a temporary directory and return its path, throwing on failure. */
+/** Create a temporary directory and return its path. */
 let dirCounter = 0;
 const tempDir = async (): Promise<string> => {
   const base = tmpdir();
@@ -51,156 +104,242 @@ const tempDir = async (): Promise<string> => {
   return path;
 };
 
-// Helper to resolve join safely
-const jn = (...parts: string[]): string => {
-  const result = join(...parts);
-  if (result === undefined) throw new Error('join() returned undefined');
-  return result;
+/** Create a variant of runCli that does NOT inject --mno-relax. */
+const runCliRaw = async (
+  args: readonly string[]
+): Promise<{
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly stdoutBytes: Uint8Array;
+}> => {
+  return new Promise((resolve, reject) => {
+    const child = spawn('npx', ['tsx', '--conditions', '@risc-v-asm/source', BIN, ...args], {
+      stdio: [null, 'pipe', 'pipe'],
+      env: { ...process.env },
+      cwd: process.cwd(),
+    });
+
+    const outBuf: Uint8Array[] = [];
+    const errBuf: Uint8Array[] = [];
+
+    if (child.stdout) {
+      child.stdout.on('data', (chunk: Uint8Array | string) => {
+        outBuf.push(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk);
+      });
+    }
+    if (child.stderr) {
+      child.stderr.on('data', (chunk: Uint8Array | string) => {
+        errBuf.push(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk);
+      });
+    }
+
+    child.on('exit', (exitCode: number | null) => {
+      const stdoutBytes = new Uint8Array(outBuf.reduce((sum, b) => sum + b.length, 0));
+      let offset = 0;
+      for (const b of outBuf) {
+        stdoutBytes.set(b, offset);
+        offset += b.length;
+      }
+
+      const stderrBytes = new Uint8Array(errBuf.reduce((sum, b) => sum + b.length, 0));
+      offset = 0;
+      for (const b of errBuf) {
+        stderrBytes.set(b, offset);
+        offset += b.length;
+      }
+
+      resolve({
+        exitCode: exitCode ?? 1,
+        stdout: new TextDecoder().decode(stdoutBytes),
+        stderr: new TextDecoder().decode(stderrBytes),
+        stdoutBytes,
+      });
+    });
+
+    child.on('error', (err: unknown) => {
+      reject(err instanceof Error ? err : new Error(String(err)));
+    });
+  });
 };
 
 /**
- * Build a CliIo-compatible bag that captures output into arrays.
- * After runCli resolves, call output(h) to get { out, err } strings.
+ * Assert that a byte array begins with a valid ELF64 ET_REL header.
+ *
+ * Checks the 64-byte ELF header for:
+ *  - magic bytes (\\x7fELF)
+ *  - ELF class (2 = 64-bit)
+ *  - data encoding (1 = little-endian)
+ *  - e_type (1 = ET_REL)
+ *  - e_machine (243 = EM_RISCV)
  */
-const testIo = (): {
-  io: {
-    stdout: { write: (chunk: string | Uint8Array) => void };
-    stderr: { write: (chunk: string | Uint8Array) => void };
-  };
-  outChunks: string[];
-  errChunks: string[];
-} => {
-  const outChunks: string[] = [];
-  const errChunks: string[] = [];
-  return {
-    io: {
-      stdout: {
-        write: (chunk: string | Uint8Array) => {
-          outChunks.push(chunk.toString());
-        },
-      },
-      stderr: {
-        write: (chunk: string | Uint8Array) => {
-          errChunks.push(chunk.toString());
-        },
-      },
-    },
-    outChunks,
-    errChunks,
-  };
+const assertValidElfHeader = (bytes: Uint8Array): void => {
+  assert.ok(bytes.length >= 64, 'ELF header must be at least 64 bytes');
+  assert.strictEqual(bytes[0], 0x7f, 'ELF magic byte 0');
+  assert.strictEqual(bytes[1], 0x45, 'ELF magic byte 1 (E)');
+  assert.strictEqual(bytes[2], 0x4c, 'ELF magic byte 2 (L)');
+  assert.strictEqual(bytes[3], 0x46, 'ELF magic byte 3 (F)');
+  assert.strictEqual(bytes[4], 2, 'e_ident class: ELFCLASS64');
+  assert.strictEqual(bytes[5], 1, 'e_ident data: little-endian');
+  // e_type is little-endian uint16 at offset 16
+  const eType = bytes[16]! | (bytes[17]! << 8);
+  assert.strictEqual(eType, 1, 'e_type: ET_REL');
+  // e_machine is little-endian uint16 at offset 18
+  const eMachine = bytes[18]! | (bytes[19]! << 8);
+  assert.strictEqual(eMachine, 243, 'e_machine: EM_RISCV');
 };
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 test('CLI --version prints 0.0.0 and exits 0', async () => {
-  const { io, outChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '--version'], io);
+  const { exitCode, stdout } = await runCli(['--version']);
   assert.strictEqual(exitCode, 0);
-  assert.match(outChunks.join(''), /0\.0\.0/);
+  assert.match(stdout, /0\.0\.0/);
 });
 
 test('CLI -version prints 0.0.0 and exits 0', async () => {
-  const { io, outChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '-version'], io);
+  const { exitCode, stdout } = await runCli(['-version']);
   assert.strictEqual(exitCode, 0);
-  assert.match(outChunks.join(''), /0\.0\.0/);
+  assert.match(stdout, /0\.0\.0/);
 });
 
-test('CLI requires at least one input file', async () => {
-  const { io, errChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '-o', '-'], io);
-  assert.strictEqual(exitCode, 1);
-  assert.match(errChunks.join(''), /no input files/);
+test('CLI reads stdin when no input files', async () => {
+  const result = await new Promise<{ exitCode: number; stdoutBytes: Uint8Array; stderr: string }>(
+    (resolve, reject) => {
+      const child = spawn(
+        'npx',
+        ['tsx', '--conditions', '@risc-v-asm/source', BIN, '--mno-relax', '-o', '-'],
+        {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env },
+          cwd: process.cwd(),
+        }
+      );
+      const outBuf: Uint8Array[] = [];
+      const errBuf: Uint8Array[] = [];
+      if (child.stdout) {
+        child.stdout.on('data', (chunk: Uint8Array | string) => {
+          outBuf.push(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk);
+        });
+      }
+      if (child.stderr) {
+        child.stderr.on('data', (chunk: Uint8Array | string) => {
+          errBuf.push(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk);
+        });
+      }
+      child.on('exit', (exitCode: number | null) => {
+        const stdoutBytes = new Uint8Array(outBuf.reduce((sum, b) => sum + b.length, 0));
+        let offset = 0;
+        for (const b of outBuf) {
+          stdoutBytes.set(b, offset);
+          offset += b.length;
+        }
+        const stderr =
+          errBuf.length > 0
+            ? new TextDecoder().decode(new Uint8Array(errBuf.reduce((sum, b) => sum + b.length, 0)))
+            : '';
+        resolve({ exitCode: exitCode ?? 1, stdoutBytes, stderr });
+      });
+      child.on('error', (err) => reject(err instanceof Error ? err : new Error(String(err))));
+      if (child.stdin) {
+        child.stdin.write('addi x1, x0, 42\n');
+        child.stdin.end();
+      }
+    }
+  );
+  assert.strictEqual(result.exitCode, 0);
+  assert.strictEqual(result.stdoutBytes[0], 0x7f);
+  assert.strictEqual(result.stdoutBytes[1], 0x45);
+  assert.strictEqual(result.stdoutBytes[2], 0x4c);
+  assert.strictEqual(result.stdoutBytes[3], 0x46);
+});
+
+test('CLI reads stdin when input file is -', async () => {
+  const dir = await tempDir();
+  const outFile = join(dir, 'a.out');
+  const result = await new Promise<{ exitCode: number; stderr: string }>((resolve, reject) => {
+    const child = spawn(
+      'npx',
+      ['tsx', '--conditions', '@risc-v-asm/source', BIN, '--mno-relax', '-o', outFile, '-'],
+      {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env },
+        cwd: process.cwd(),
+      }
+    );
+    const errBuf: Uint8Array[] = [];
+    if (child.stderr) {
+      child.stderr.on('data', (chunk: Uint8Array | string) => {
+        errBuf.push(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk);
+      });
+    }
+    child.on('exit', (exitCode: number | null) => {
+      const stderr =
+        errBuf.length > 0
+          ? new TextDecoder().decode(new Uint8Array(errBuf.reduce((sum, b) => sum + b.length, 0)))
+          : '';
+      resolve({ exitCode: exitCode ?? 1, stderr });
+    });
+    child.on('error', (err) => reject(err instanceof Error ? err : new Error(String(err))));
+    if (child.stdin) {
+      child.stdin.write('addi x1, x0, 1\n');
+      child.stdin.end();
+    }
+  });
+  assert.strictEqual(result.exitCode, 0);
+  const bytes = await readFile(outFile);
+  assert.strictEqual(bytes[0], 0x7f);
+  assert.strictEqual(bytes[1], 0x45);
+  assert.strictEqual(bytes[2], 0x4c);
+  assert.strictEqual(bytes[3], 0x46);
 });
 
 test('CLI --help prints help and exits 0', async () => {
-  const { io, outChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '--help'], io);
+  const { exitCode, stdout } = await runCli(['--help']);
   assert.strictEqual(exitCode, 0);
-  assert.match(outChunks.join(''), /risc-v-asm/);
+  assert.match(stdout, /risc-v-asm/);
 });
 
 test('CLI --target-help prints target options and exits 0', async () => {
-  const { io, outChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '--target-help'], io);
+  const { exitCode, stdout } = await runCli(['--target-help']);
   assert.strictEqual(exitCode, 0);
-  assert.match(outChunks.join(''), /mrelax/);
+  assert.match(stdout, /mno-relax/);
+  assert.ok(!/--format/.test(stdout), 'should not mention --format');
+  assert.ok(!/base-address/.test(stdout), 'should not mention base-address');
 });
 
-test('CLI default format is ELF and fails until overridden', async () => {
-  const { io, errChunks } = testIo();
-  const exitCode = await runCliCommand(
-    ['node', 'risc-v-asm', ...SUPPORTED_DEFAULT_OVERRIDES, '-o', '-', 'nonexistent.s'],
-    io
-  );
-  assert.strictEqual(exitCode, 1);
-  assert.match(errChunks.join(''), /ELF object output is not implemented/);
-});
-
-test('CLI basic assembly produces output file', async () => {
+test('CLI basic assembly produces valid ELF output', async () => {
   const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
-  const outFile = jn(dir, 'a.out');
+  const testFile = join(dir, 'test.s');
+  const outFile = join(dir, 'a.out');
   await writeFile(testFile, 'addi x1, x0, 42\n');
-  const exitCode = await runCli(['node', 'risc-v-asm', '-o', outFile, testFile]);
+  const { exitCode } = await runCli(['-o', outFile, testFile]);
   assert.strictEqual(exitCode, 0);
-  assert.ok(readFileSync(outFile).length > 0);
-});
-
-test('CLI with --format=ihex produces Intel HEX', async () => {
-  const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
-  const outFile = jn(dir, 'a.ihex');
-  await writeFile(testFile, 'addi x1, x0, 42\n');
-  const exitCode = await runCli(['node', 'risc-v-asm', '-o', outFile, '--format=ihex', testFile]);
-  assert.strictEqual(exitCode, 0);
-  const text = readFileSync(outFile, 'utf8');
-  assert.match(text, /^:/);
-  assert.match(text, /:00000001FF\n?$/);
-});
-
-test('CLI with --format=elf fails with error', async () => {
-  const { io, errChunks } = testIo();
-  const exitCode = await runCli(
-    ['node', 'risc-v-asm', '--format=elf', '-o', '-', 'nonexistent.s'],
-    io
-  );
-  assert.strictEqual(exitCode, 1);
-  assert.match(errChunks.join(''), /not implemented/);
-});
-
-test('CLI delegates unsupported format validation to assemble', async () => {
-  const { io, errChunks } = testIo();
-  const exitCode = await runCli(
-    ['node', 'risc-v-asm', '--format=text', '-o', '-', 'nonexistent.s'],
-    io
-  );
-  assert.strictEqual(exitCode, 1);
-  assert.match(errChunks.join(''), /Unsupported format "text"/);
-  assert.doesNotMatch(errChunks.join(''), /unknown option/);
+  const bytes = await readFile(outFile);
+  assertValidElfHeader(bytes);
 });
 
 test('CLI with unknown file returns error 1', async () => {
-  const { io } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', 'nonexistent.s'], io);
+  const { exitCode, stderr } = await runCli(['nonexistent.s']);
   assert.strictEqual(exitCode, 1);
+  assert.match(stderr, /ENOENT.*nonexistent\.s/);
 });
 
-test('CLI with --defsym', async () => {
+test('CLI with --defsym produces valid ELF', async () => {
   const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
-  const outFile = jn(dir, 'a.out');
+  const testFile = join(dir, 'test.s');
+  const outFile = join(dir, 'a.out');
   await writeFile(testFile, 'addi x1, x0, val\n');
-  const exitCode = await runCli(['node', 'risc-v-asm', '-o', outFile, '--defsym=val=42', testFile]);
+  const { exitCode } = await runCli(['-o', outFile, '--defsym=val=42', testFile]);
   assert.strictEqual(exitCode, 0);
-  assert.ok(readFileSync(outFile).length > 0);
+  const bytes = await readFile(outFile);
+  assertValidElfHeader(bytes);
 });
 
 test('CLI unregistered options fail as unknown options', async () => {
   for (const flag of [
-    '--mbig-endian',
-    '-mbig-endian',
-    '-mrelax=yes',
-    '--march',
-    '-march=rv64im',
     '--mabi',
     '-mabi=lp64',
     '--g',
@@ -209,7 +348,6 @@ test('CLI unregistered options fail as unknown options', async () => {
     '--fpic',
     '-fpic',
     '--fPIC',
-    '-march-attr=yes',
     '--warn',
     '--fatal-warnings',
     '--no-warn',
@@ -220,49 +358,19 @@ test('CLI unregistered options fail as unknown options', async () => {
     '-v',
     '--verbose',
   ]) {
-    const { io, errChunks } = testIo();
-    const exitCode = await runCli(['node', 'risc-v-asm', flag], io);
+    const { exitCode, stderr } = await runCli([flag]);
     assert.strictEqual(exitCode, 1, `${flag} should fail`);
-    assert.match(errChunks.join(''), /unknown option/);
+    assert.match(stderr, /unknown option/);
+    // The error message must name the specific flag
+    const flagName = flag.includes('=') ? flag.slice(0, flag.indexOf('=')) : flag;
+    assert.ok(stderr.includes(flagName), `stderr should mention "${flagName}"`);
   }
 });
 
 test('CLI rejects unsupported explicit defaults', async () => {
-  const stages = [
-    { args: [], error: /use -mno-relax/ },
-    { args: ['--mno-relax', '--march-attr'], error: /use -mno-arch-attr/ },
-    { args: ['--mno-relax', '--mcsr-check'], error: /use -mno-csr-check/ },
-  ];
-  for (const stage of stages) {
-    const { io, errChunks } = testIo();
-    const exitCode = await runCliCommand(
-      ['node', 'risc-v-asm', ...stage.args, '-o', '-', 'nonexistent.s'],
-      io
-    );
-    assert.strictEqual(exitCode, 1);
-    assert.match(errChunks.join(''), stage.error);
-  }
-
-  const dir = await tempDir();
-  const input = jn(dir, 'input.s');
-  await writeFile(input, 'nop');
-  const { io, outChunks } = testIo();
-  const exitCode = await runCliCommand(
-    [
-      'node',
-      'risc-v-asm',
-      ...SUPPORTED_DEFAULT_OVERRIDES,
-      '--mno-arch-attr',
-      '--mno-csr-check',
-      '--format=binary',
-      '-o',
-      '-',
-      input,
-    ],
-    io
-  );
-  assert.strictEqual(exitCode, 0);
-  assert.ok(outChunks.length > 0);
+  const { exitCode, stderr } = await runCli(['--march-attr', '-o', '-', 'nonexistent.s']);
+  assert.strictEqual(exitCode, 1);
+  assert.match(stderr, /ENOENT.*nonexistent\.s/);
 });
 
 test('CLI supported target overrides accept GNU spellings', async () => {
@@ -278,242 +386,178 @@ test('CLI supported target overrides accept GNU spellings', async () => {
     '--fno-pic',
     '-fno-pic',
   ]) {
-    const { io, outChunks } = testIo();
-    const exitCode = await runCli(['node', 'risc-v-asm', flag, '--version'], io);
+    const { exitCode, stdout } = await runCli([flag, '--version']);
     assert.strictEqual(exitCode, 0, `${flag} should succeed`);
-    assert.match(outChunks.join(''), /0\.0\.0/);
+    assert.match(stdout, /0\.0\.0/);
   }
 });
 
-test('CLI multiple files concatenate', async () => {
+test('CLI multiple files concatenate produces valid ELF', async () => {
   const dir = await tempDir();
-  const f1 = jn(dir, 'a.s');
-  const f2 = jn(dir, 'b.s');
-  const out = jn(dir, 'a.out');
+  const f1 = join(dir, 'a.s');
+  const f2 = join(dir, 'b.s');
+  const out = join(dir, 'a.out');
   await writeFile(f1, 'addi x1, x0, 10\n');
   await writeFile(f2, 'addi x2, x1, 20\n');
-  const exitCode = await runCli(['node', 'risc-v-asm', '-o', out, f1, f2]);
+  const { exitCode } = await runCli(['-o', out, f1, f2]);
   assert.strictEqual(exitCode, 0);
-  assert.strictEqual(readFileSync(out).length, 8);
+  const bytes = await readFile(out);
+  assertValidElfHeader(bytes);
 });
 
-test('CLI empty source produces empty binary', async () => {
+test('CLI empty source produces valid ELF output', async () => {
   const dir = await tempDir();
-  const input = jn(dir, 'empty.s');
+  const input = join(dir, 'empty.s');
+  const outFile = join(dir, 'out.elf');
   await writeFile(input, '');
-  const { io, outChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '-o', '-', input], io);
+  const { exitCode } = await runCli(['-o', outFile, input]);
   assert.strictEqual(exitCode, 0);
-  assert.strictEqual(outChunks.join('').length, 0);
-});
-
-test('CLI IHEX for empty source gets EOF record', async () => {
-  const dir = await tempDir();
-  const input = jn(dir, 'empty.s');
-  const outFile = jn(dir, 'empty.ihex');
-  await writeFile(input, '');
-  const { io } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '--format=ihex', '-o', outFile, input], io);
-  assert.strictEqual(exitCode, 0);
-  const text = readFileSync(outFile, 'utf8');
-  assert.strictEqual(text, ':00000001FF\n');
+  const bytes = await readFile(outFile);
+  assertValidElfHeader(bytes);
 });
 
 test('CLI listing option is rejected', async () => {
-  const { io, errChunks } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '--listing'], io);
+  const { exitCode, stderr } = await runCli(['--listing']);
   assert.strictEqual(exitCode, 1);
-  assert.match(errChunks.join(''), /unknown option/);
+  assert.match(stderr, /unknown option/);
 });
 
 test('CLI validation: malformed --defsym fails', async () => {
   const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
+  const testFile = join(dir, 'test.s');
   await writeFile(testFile, 'addi x1, x0, 42\n');
-  const { io } = testIo();
-  const exitCode = await runCli(['node', 'risc-v-asm', '--defsym', 'invalid', testFile], io);
+  const { exitCode, stderr } = await runCli(['--defsym', 'invalid', testFile]);
   assert.strictEqual(exitCode, 1);
+  assert.match(stderr, /--defsym expects symbol=value/);
 });
 
-// ---------------------------------------------------------------------------
-// Intel HEX output tests
-// ---------------------------------------------------------------------------
-
-test('IHEX exact small output with checksum and EOF', async () => {
-  // One addi instruction → 4 bytes → one data record + EOF
+test('CLI writes ELF to stdout with -o -', async () => {
   const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
-  const outFile = jn(dir, 'out.ihex');
+  const testFile = join(dir, 'test.s');
   await writeFile(testFile, 'addi x1, x0, 42\n');
-  const exitCode = await runCli(['node', 'risc-v-asm', '--format=ihex', '-o', outFile, testFile]);
+  const { exitCode, stdoutBytes } = await runCli(['-o', '-', testFile]);
   assert.strictEqual(exitCode, 0);
-  const text = readFileSync(outFile, 'utf8').trimEnd();
-  const lines = text.split('\n');
-  // Data record: 4 data bytes + 5 field bytes = 9 bytes → :09... (hex length 09)
-  assert.ok(lines[0]!.startsWith(':'), 'first line must start with colon');
-  // Last line is EOF
-  assert.strictEqual(lines[lines.length - 1], ':00000001FF');
-  // Verify checksum: sum of all bytes in each line (excluding ':') must be 0x00
-  for (const line of lines) {
-    const hex = line.slice(1).toLowerCase();
-    let sum = 0;
-    for (let i = 0; i < hex.length; i += 2) {
-      sum += Number.parseInt(hex.substring(i, i + 2), 16);
-    }
-    assert.strictEqual(sum & 0xff, 0, 'each record must have correct checksum (sum ≡ 0 mod 256)');
-  }
+  assert.strictEqual(stdoutBytes[0], 0x7f);
+  assert.strictEqual(stdoutBytes[1], 0x45);
+  assert.strictEqual(stdoutBytes[2], 0x4c);
+  assert.strictEqual(stdoutBytes[3], 0x46);
 });
 
-test('IHEX extended-linear-address record across 64 KiB boundary', async () => {
-  // Fill 65536 bytes + 4 more to force crossing 0x10000 → needs an extended-address record
+test('CLI -march=rv64imc accepts valid instruction', async () => {
   const dir = await tempDir();
-  const testFile = jn(dir, 'big.s');
-  const outFile = jn(dir, 'big.ihex');
-  // 0x4004 = 16388 nop instructions = 65536 bytes of nop, plus 4 extra bytes
-  const nopCount = 0x4005; // 16389 nops = 65536 + 4 = 65540 bytes
-  const body = Array.from({ length: nopCount }, () => 'nop').join('\n');
-  await writeFile(testFile, body + '\n');
-  const exitCode = await runCli(['node', 'risc-v-asm', '--format=ihex', '-o', outFile, testFile]);
+  const testFile = join(dir, 'test.s');
+  const outFile = join(dir, 'a.out');
+  await writeFile(testFile, 'c.addi x1, x0, 1\n');
+  const { exitCode } = await runCli(['-o', outFile, '--march=rv64imc', testFile]);
   assert.strictEqual(exitCode, 0);
-  const text = readFileSync(outFile, 'utf8');
-  // Should contain an extended-linear-address record (type 04)
-  assert.match(text, /:02000004..../m, 'must contain extended-linear-address record');
-  // Must have the EOF record
-  assert.match(text, /:00000001FF\n?/);
-  // Verify all records have correct checksum
-  for (const line of text.trimEnd().split('\n')) {
-    const hex = line.slice(1).toLowerCase();
-    let sum = 0;
-    for (let i = 0; i < hex.length; i += 2) {
-      sum += Number.parseInt(hex.substring(i, i + 2), 16);
-    }
-    assert.strictEqual(sum & 0xff, 0, 'each record must have correct checksum');
-  }
+  const bytes = await readFile(outFile);
+  assertValidElfHeader(bytes);
 });
 
-test('IHEX --base-address shifts IHEX addresses but does not pad binary', async () => {
+test('CLI -march=rv64im rejects c.addi with error', async () => {
   const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
+  const testFile = join(dir, 'test.s');
+  const outFile = join(dir, 'a.out');
+  await writeFile(testFile, 'c.addi x1, x0, 1\n');
+  const { exitCode, stderr } = await runCli(['-o', outFile, '--march=rv64im', testFile]);
+  assert.strictEqual(exitCode, 1);
+  assert.match(stderr, /c\.addi/);
+  assert.match(stderr, /requires extension "c"/);
+  assert.match(stderr, /rv64im/);
+});
+
+test('CLI -march with joined form (-march=rv64imc) works', async () => {
+  const dir = await tempDir();
+  const testFile = join(dir, 'test.s');
+  const outFile = join(dir, 'a.out');
+  await writeFile(testFile, 'addi x1, x0, 1\n');
+  const { exitCode } = await runCli(['-o', outFile, '-march=rv64imc', testFile]);
+  assert.strictEqual(exitCode, 0);
+  const bytes = await readFile(outFile);
+  assertValidElfHeader(bytes);
+});
+
+test('CLI --target-help includes -march, -mno-relax, --defsym, -o', async () => {
+  const { exitCode, stdout } = await runCli(['--target-help']);
+  assert.strictEqual(exitCode, 0);
+  assert.match(stdout, /-march=ISA/);
+  assert.match(stdout, /mno-relax/);
+  assert.match(stdout, /defsym/);
+  assert.match(stdout, /--output/);
+  assert.ok(!/--format/.test(stdout), 'should not mention --format');
+  assert.ok(!/base-address/.test(stdout), 'should not mention base-address');
+});
+
+test('CLI rejects missing -mno-relax', async () => {
+  const dir = await tempDir();
+  const testFile = join(dir, 'test.s');
+  const outFile = join(dir, 'a.out');
   await writeFile(testFile, 'addi x1, x0, 42\n');
-  // Binary output with base address should not pad
-  const binOut = jn(dir, 'out.bin');
-  const bc1 = await runCli(['node', 'risc-v-asm', '-o', binOut, '--base-address=0x1000', testFile]);
-  assert.strictEqual(bc1, 0);
-  assert.strictEqual(readFileSync(binOut).length, 4, 'binary length unchanged by base-address');
-  // IHEX output with base address should have shifted address
-  const ihexOut = jn(dir, 'out.ihex');
-  const bc2 = await runCli([
-    'node',
-    'risc-v-asm',
-    '--format=ihex',
-    '-o',
-    ihexOut,
-    '--base-address=0x1000',
-    testFile,
-  ]);
-  assert.strictEqual(bc2, 0);
-  const text = readFileSync(ihexOut, 'utf8');
-  // The data record address should be 0x1000 (big-endian in Intel HEX)
-  // Format: :LEN ADDR_HI ADDR_LO TYPE DATA... CKSUM
-  // For address 0x1000: ADDR_HI=0x10, ADDR_LO=0x00 → record contains 1000 after colon
-  // The extended-address line starts with :02..., the data line with :04...
-  const lines = text.split('\n');
-  const dataLine = lines.find((l) => l.startsWith(':04'));
-  assert.ok(dataLine !== undefined, 'data record line exists');
-  if (dataLine !== undefined)
-    assert.match(dataLine, /^:041000/, 'IHEX data record shows shifted address 0x1000');
+  // Use runCliRaw to avoid the injected --mno-relax
+  const { exitCode, stderr } = await runCliRaw(['-o', outFile, testFile]);
+  assert.strictEqual(exitCode, 1);
+  assert.match(stderr, /-mno-relax/);
 });
 
-// ---------------------------------------------------------------------------
-// GNU one-dash machine option tests
-// ---------------------------------------------------------------------------
-
-test('GNU one-dash -mlittle-endian succeeds', async () => {
+test('CLI rejects -mrelax', async () => {
   const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
-  await writeFile(testFile, 'nop\n');
-  const exitCode = await runCli([
-    'node',
-    'risc-v-asm',
-    '-mlittle-endian',
-    '-o',
-    jn(dir, 'a.out'),
-    testFile,
-  ]);
-  assert.strictEqual(exitCode, 0);
+  const testFile = join(dir, 'test.s');
+  const outFile = join(dir, 'a.out');
+  await writeFile(testFile, 'addi x1, x0, 42\n');
+  // Use runCliRaw to avoid the injected --mno-relax, then pass --mrelax explicitly
+  const { exitCode, stderr } = await runCliRaw(['-o', outFile, '--mrelax', testFile]);
+  assert.strictEqual(exitCode, 1);
+  assert.match(stderr, /-mno-relax/);
 });
 
-test('GNU one-dash -mno-relax succeeds', async () => {
+test('CLI rejects --mcsr-check naming -mno-csr-check', async () => {
   const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
-  await writeFile(testFile, 'nop\n');
-  const exitCode = await runCli([
-    'node',
-    'risc-v-asm',
-    '-mno-relax',
-    '-o',
-    jn(dir, 'a.out'),
-    testFile,
-  ]);
-  assert.strictEqual(exitCode, 0);
-});
-
-test('GNU one-dash --defsym with = syntax works', async () => {
-  const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
-  await writeFile(testFile, 'addi x1, x0, val\n');
-  const outFile = jn(dir, 'a.out');
-  const exitCode = await runCli([
-    'node',
-    'risc-v-asm',
-    '--defsym',
-    'val=42',
+  const testFile = join(dir, 'test.s');
+  const outFile = join(dir, 'a.out');
+  await writeFile(testFile, 'addi x1, x0, 42\n');
+  const { exitCode, stderr } = await runCliRaw([
     '-o',
     outFile,
+    '--mcsr-check',
+    '--mno-relax',
     testFile,
   ]);
-  assert.strictEqual(exitCode, 0);
-  assert.strictEqual(readFileSync(outFile).length, 4);
+  assert.strictEqual(exitCode, 1);
+  assert.match(stderr, /-mno-csr-check/);
 });
 
-test('GNU one-dash -o attaches file', async () => {
+test('CLI rejects --mbig-endian naming -mlittle-endian', async () => {
   const dir = await tempDir();
-  const testFile = jn(dir, 'test.s');
-  await writeFile(testFile, 'nop\n');
-  const outFile = jn(dir, 'my.out');
-  const exitCode = await runCli(['node', 'risc-v-asm', `-o${outFile}`, testFile]);
-  assert.strictEqual(exitCode, 0);
-  assert.ok(readFileSync(outFile).length > 0);
-});
-
-// ---------------------------------------------------------------------------
-// Regression tests: Intel HEX 64 KiB boundary and GNU option normalization
-// ---------------------------------------------------------------------------
-
-test('IHEX does not cross 64 KiB boundary at base-address=0xFFFF', async () => {
-  const dir = await tempDir();
-  const testFile = jn(dir, 'a.s');
-  const outFile = jn(dir, 'x.ihex');
-  // Two 4-byte instructions starting at 0xFFFF = 8 bytes starting at offset 0xFFFF.
-  // The record starting at 0xFFFF must be at most 1 byte (0x10000 - 0xFFFF = 1).
-  await writeFile(testFile, 'addi x1, x0, 42\naddi x2, x0, 43\n');
-  const exitCode = await runCli([
-    'node',
-    'risc-v-asm',
-    '--format=ihex',
-    '--base-address=0xffff',
+  const testFile = join(dir, 'test.s');
+  const outFile = join(dir, 'a.out');
+  await writeFile(testFile, 'addi x1, x0, 42\n');
+  const { exitCode, stderr } = await runCliRaw([
     '-o',
     outFile,
+    '--mbig-endian',
+    '--mno-relax',
     testFile,
   ]);
-  assert.strictEqual(exitCode, 0);
-  const text = readFileSync(outFile, 'utf8').trimEnd();
-  const lines = text.split('\n');
-  // Exact record sequence verified against running encoder output:
-  assert.strictEqual(lines.length, 5);
-  assert.strictEqual(lines[0], ':020000040000FA');
-  assert.strictEqual(lines[1], ':01FFFF00936E');
-  assert.strictEqual(lines[2], ':020000040001F9');
-  assert.strictEqual(lines[3], ':0700000000A0021301B00291');
-  assert.strictEqual(lines[4], ':00000001FF');
+  assert.strictEqual(exitCode, 1);
+  assert.match(stderr, /-mlittle-endian/);
+});
+
+test('CLI rejects unknown mnemonic with line number', async () => {
+  const dir = await tempDir();
+  const testFile = join(dir, 'test.s');
+  const outFile = join(dir, 'a.out');
+  await writeFile(testFile, 'foobar x1, x0, 1\n');
+  const { exitCode, stderr } = await runCli(['-o', outFile, testFile]);
+  assert.strictEqual(exitCode, 1);
+  assert.match(stderr, /line 1/);
+});
+
+test('CLI rejects malformed label with line number', async () => {
+  const dir = await tempDir();
+  const testFile = join(dir, 'test.s');
+  const outFile = join(dir, 'a.out');
+  await writeFile(testFile, ':addi x1, x0, 1\n');
+  const { exitCode, stderr } = await runCli(['-o', outFile, testFile]);
+  assert.strictEqual(exitCode, 1);
+  assert.match(stderr, /line 1/);
 });

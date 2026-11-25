@@ -158,7 +158,15 @@ export const encodeCLd = (
   rs1P: number,
   cUimm8lo: number,
   cUimm8hi: number
-): Uint8Array => encodeClFields(0x0, 0x3, cUimm8hi, cUimm8lo, rs1P, rdP);
+): Uint8Array => {
+  if (cUimm8lo < 0 || cUimm8lo > 3) {
+    throw new Error(`c.ld offset low bits ${cUimm8lo} out of range (0..3)`);
+  }
+  if (cUimm8hi < 0 || cUimm8hi > 7) {
+    throw new Error(`c.ld offset high bits ${cUimm8hi} out of range (0..7)`);
+  }
+  return encodeClFields(0x0, 0x3, cUimm8hi, cUimm8lo, rs1P, rdP);
+};
 
 /** Encode c.sd (rv64_c) as a 16-bit instruction. */
 export const encodeCSd = (
@@ -166,7 +174,15 @@ export const encodeCSd = (
   rs2P: number,
   cUimm8hi: number,
   cUimm8lo: number
-): Uint8Array => encodeCsFields(0x0, 0x7, cUimm8hi, cUimm8lo, rs1P, rs2P);
+): Uint8Array => {
+  if (cUimm8lo < 0 || cUimm8lo > 3) {
+    throw new Error(`c.sd offset low bits ${cUimm8lo} out of range (0..3)`);
+  }
+  if (cUimm8hi < 0 || cUimm8hi > 7) {
+    throw new Error(`c.sd offset high bits ${cUimm8hi} out of range (0..7)`);
+  }
+  return encodeCsFields(0x0, 0x7, cUimm8hi, cUimm8lo, rs1P, rs2P);
+};
 
 /** Encode c.addiw (rv64_c) as a 16-bit instruction. */
 export const encodeCAddiw = (rdRs1N0: number, cImm6lo: number, cImm6hi: number): Uint8Array =>
@@ -193,12 +209,23 @@ export const encodeCSlli = (rdRs1N0: number, cNzuimm6hi: number, cNzuimm6lo: num
   encodeCi(0x2, 0x0, cNzuimm6hi, rdRs1N0, cNzuimm6lo);
 
 /** Encode c.ldsp (rv64_c) as a 16-bit instruction. */
-export const encodeCLdsp = (rdN0: number, cUimm9sphi: number, cUimm9splo: number): Uint8Array =>
-  encodeCi(0x2, 0x3, cUimm9sphi, rdN0, cUimm9splo);
+export const encodeCLdsp = (rdN0: number, cUimm9sphi: number, cUimm9splo: number): Uint8Array => {
+  if (cUimm9sphi < 0 || cUimm9sphi > 1) {
+    throw new Error(`c.ldsp offset high bit ${cUimm9sphi} out of range (0..1)`);
+  }
+  if (cUimm9splo < 0 || cUimm9splo > 31) {
+    throw new Error(`c.ldsp offset low bits ${cUimm9splo} out of range (0..31)`);
+  }
+  return encodeCi(0x2, 0x3, cUimm9sphi, rdN0, cUimm9splo);
+};
 
 /** Encode c.sdsp (rv64_c) as a 16-bit instruction. */
-export const encodeCSdsp = (cRs2: number, cUimm9spS: number): Uint8Array =>
-  encodeCss(0x2, 0x7, cUimm9spS, cRs2);
+export const encodeCSdsp = (cRs2: number, cUimm9spS: number): Uint8Array => {
+  if (cUimm9spS < 0 || cUimm9spS > 63) {
+    throw new Error(`c.sdsp offset ${cUimm9spS} out of range (0..63)`);
+  }
+  return encodeCss(0x2, 0x7, cUimm9spS, cRs2);
+};
 
 /** Encode fcvt.l.d (rv64_d) as a 32-bit instruction. */
 export const encodeFcvtLD = (rd: number, rs1: number, rm: number): Uint8Array =>
@@ -596,8 +623,15 @@ export const encodeAmomaxuW = (
 ): Uint8Array => encodeA(0x2f, 0x1c, aq, rl, 0x2, rd, rs1, rs2);
 
 /** Encode c.addi4spn (rv_c) as a 16-bit instruction. */
-export const encodeCAddi4spn = (rdP: number, cNzuimm10: number): Uint8Array =>
-  encodeCiw(0x0, 0x0, cNzuimm10, rdP);
+export const encodeCAddi4spn = (rdP: number, cNzuimm10: number): Uint8Array => {
+  if (cNzuimm10 < 1 || cNzuimm10 > 255) {
+    throw new Error(
+      `c.addi4spn immediate ${cNzuimm10 << 2} is out of range: ` +
+        `must be between 4 and 1020 (multiple of 4)`
+    );
+  }
+  return encodeCiw(0x0, 0x0, cNzuimm10, rdP);
+};
 
 /** Encode c.lw (rv_c) as a 16-bit instruction. */
 export const encodeCLw = (
@@ -605,7 +639,15 @@ export const encodeCLw = (
   rs1P: number,
   cUimm7lo: number,
   cUimm7hi: number
-): Uint8Array => encodeClFields(0x0, 0x2, cUimm7hi, cUimm7lo, rs1P, rdP);
+): Uint8Array => {
+  if (cUimm7lo < 0 || cUimm7lo > 3) {
+    throw new Error(`c.lw offset low bits ${cUimm7lo} out of range (0..3)`);
+  }
+  if (cUimm7hi < 0 || cUimm7hi > 7) {
+    throw new Error(`c.lw offset high bits ${cUimm7hi} out of range (0..7)`);
+  }
+  return encodeClFields(0x0, 0x2, cUimm7hi, cUimm7lo, rs1P, rdP);
+};
 
 /** Encode c.sw (rv_c) as a 16-bit instruction. */
 export const encodeCSw = (
@@ -613,7 +655,15 @@ export const encodeCSw = (
   rs2P: number,
   cUimm7lo: number,
   cUimm7hi: number
-): Uint8Array => encodeCsFields(0x0, 0x6, cUimm7hi, cUimm7lo, rs1P, rs2P);
+): Uint8Array => {
+  if (cUimm7lo < 0 || cUimm7lo > 3) {
+    throw new Error(`c.sw offset low bits ${cUimm7lo} out of range (0..3)`);
+  }
+  if (cUimm7hi < 0 || cUimm7hi > 7) {
+    throw new Error(`c.sw offset high bits ${cUimm7hi} out of range (0..7)`);
+  }
+  return encodeCsFields(0x0, 0x6, cUimm7hi, cUimm7lo, rs1P, rs2P);
+};
 
 /** Encode c.nop (rv_c) as a 16-bit instruction. */
 export const encodeCNop = (cNzimm6hi: number, cNzimm6lo: number): Uint8Array =>
@@ -667,8 +717,15 @@ export const encodeCBnez = (rs1P: number, cBimm9lo: number, cBimm9hi: number): U
   encodeCbFields(0x1, 0x7, cBimm9hi, cBimm9lo, rs1P);
 
 /** Encode c.lwsp (rv_c) as a 16-bit instruction. */
-export const encodeCLwsp = (rdN0: number, cUimm8sphi: number, cUimm8splo: number): Uint8Array =>
-  encodeCi(0x2, 0x2, cUimm8sphi, rdN0, cUimm8splo);
+export const encodeCLwsp = (rdN0: number, cUimm8sphi: number, cUimm8splo: number): Uint8Array => {
+  if (cUimm8sphi < 0 || cUimm8sphi > 1) {
+    throw new Error(`c.lwsp offset high bit ${cUimm8sphi} out of range (0..1)`);
+  }
+  if (cUimm8splo < 0 || cUimm8splo > 31) {
+    throw new Error(`c.lwsp offset low bits ${cUimm8splo} out of range (0..31)`);
+  }
+  return encodeCi(0x2, 0x2, cUimm8sphi, rdN0, cUimm8splo);
+};
 
 /** Encode c.jr (rv_c) as a 16-bit instruction. */
 export const encodeCJr = (rs1N0: number): Uint8Array => encodeCr(0x2, 0x8, rs1N0, 0x0);
@@ -688,8 +745,12 @@ export const encodeCAdd = (rdRs1N0: number, cRs2N0: number): Uint8Array =>
   encodeCr(0x2, 0x9, rdRs1N0, cRs2N0);
 
 /** Encode c.swsp (rv_c) as a 16-bit instruction. */
-export const encodeCSwsp = (cRs2: number, cUimm8spS: number): Uint8Array =>
-  encodeCss(0x2, 0x6, cUimm8spS, cRs2);
+export const encodeCSwsp = (cRs2: number, cUimm8spS: number): Uint8Array => {
+  if (cUimm8spS < 0 || cUimm8spS > 63) {
+    throw new Error(`c.swsp offset ${cUimm8spS} out of range (0..63)`);
+  }
+  return encodeCss(0x2, 0x6, cUimm8spS, cRs2);
+};
 
 /** Encode c.fld (rv_c_d) as a 16-bit instruction. */
 export const encodeCFld = (
@@ -697,7 +758,15 @@ export const encodeCFld = (
   rs1P: number,
   cUimm8lo: number,
   cUimm8hi: number
-): Uint8Array => encodeClFields(0x0, 0x1, cUimm8hi, cUimm8lo, rs1P, rdP);
+): Uint8Array => {
+  if (cUimm8lo < 0 || cUimm8lo > 3) {
+    throw new Error(`c.fld offset low bits ${cUimm8lo} out of range (0..3)`);
+  }
+  if (cUimm8hi < 0 || cUimm8hi > 7) {
+    throw new Error(`c.fld offset high bits ${cUimm8hi} out of range (0..7)`);
+  }
+  return encodeClFields(0x0, 0x1, cUimm8hi, cUimm8lo, rs1P, rdP);
+};
 
 /** Encode c.fsd (rv_c_d) as a 16-bit instruction. */
 export const encodeCFsd = (
@@ -705,15 +774,34 @@ export const encodeCFsd = (
   rs2P: number,
   cUimm8lo: number,
   cUimm8hi: number
-): Uint8Array => encodeCsFields(0x0, 0x5, cUimm8hi, cUimm8lo, rs1P, rs2P);
+): Uint8Array => {
+  if (cUimm8lo < 0 || cUimm8lo > 3) {
+    throw new Error(`c.fsd offset low bits ${cUimm8lo} out of range (0..3)`);
+  }
+  if (cUimm8hi < 0 || cUimm8hi > 7) {
+    throw new Error(`c.fsd offset high bits ${cUimm8hi} out of range (0..7)`);
+  }
+  return encodeCsFields(0x0, 0x5, cUimm8hi, cUimm8lo, rs1P, rs2P);
+};
 
 /** Encode c.fldsp (rv_c_d) as a 16-bit instruction. */
-export const encodeCFldsp = (rd: number, cUimm9sphi: number, cUimm9splo: number): Uint8Array =>
-  encodeCi(0x2, 0x1, cUimm9sphi, rd, cUimm9splo);
+export const encodeCFldsp = (rd: number, cUimm9sphi: number, cUimm9splo: number): Uint8Array => {
+  if (cUimm9sphi < 0 || cUimm9sphi > 1) {
+    throw new Error(`c.fldsp offset high bit ${cUimm9sphi} out of range (0..1)`);
+  }
+  if (cUimm9splo < 0 || cUimm9splo > 31) {
+    throw new Error(`c.fldsp offset low bits ${cUimm9splo} out of range (0..31)`);
+  }
+  return encodeCi(0x2, 0x1, cUimm9sphi, rd, cUimm9splo);
+};
 
 /** Encode c.fsdsp (rv_c_d) as a 16-bit instruction. */
-export const encodeCFsdsp = (cRs2: number, cUimm9spS: number): Uint8Array =>
-  encodeCss(0x2, 0x5, cUimm9spS, cRs2);
+export const encodeCFsdsp = (cRs2: number, cUimm9spS: number): Uint8Array => {
+  if (cUimm9spS < 0 || cUimm9spS > 63) {
+    throw new Error(`c.fsdsp offset ${cUimm9spS} out of range (0..63)`);
+  }
+  return encodeCss(0x2, 0x5, cUimm9spS, cRs2);
+};
 
 /** Encode fld (rv_d) as a 32-bit instruction. */
 export const encodeFld = (rd: number, rs1: number, imm12: number): Uint8Array =>

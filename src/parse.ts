@@ -18,6 +18,9 @@
 // Digit runs may contain underscore separators; no whitespace or other text is allowed.
 const INTEGER_LITERAL = /^[+-]?(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|[0-9][0-9_]*)$/;
 
+// Match %hi(symbol), %lo(symbol), %pcrel_hi(symbol), %pcrel_lo(symbol) case-insensitively, no whitespace.
+const OPERATOR_PATTERN = new RegExp('^%((?:hi|lo|pcrel_hi|pcrel_lo))\\(([^)]+)\\)$', 'i');
+
 /**
  * Parse a decimal, hexadecimal, binary, or octal integer literal.
  *
@@ -33,6 +36,21 @@ export const parseIntegerLiteral = (text: string): bigint | null => {
   } catch {
     return null;
   }
+};
+
+/**
+ * Parse a %hi(symbol), %lo(symbol), %pcrel_hi(symbol), or %pcrel_lo(symbol) operator.
+ *
+ * @param text - Operand text possibly containing %hi, %lo, %pcrel_hi, or %pcrel_lo.
+ * @returns The operator ('hi', 'lo', 'pcrel_hi', or 'pcrel_lo') and the inner symbol, or null if not an operator.
+ */
+export const parseOperator = (
+  text: string
+): { operator: 'hi' | 'lo' | 'pcrel_hi' | 'pcrel_lo'; inner: string } | null => {
+  const match = OPERATOR_PATTERN.exec(text);
+  if (!match) return null;
+  const op = match[1]!.toLowerCase() as 'hi' | 'lo' | 'pcrel_hi' | 'pcrel_lo';
+  return { operator: op, inner: match[2]!.trim() };
 };
 
 /**

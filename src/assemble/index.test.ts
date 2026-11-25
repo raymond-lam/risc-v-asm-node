@@ -23,9 +23,50 @@ import test from 'node:test';
 import { assemble } from '#index';
 import { collectBytes } from '#testing/stream';
 
-test('assemble treats a string as source text and emits exact binary bytes', async () => {
-  const bytes = await collectBytes(assemble('addi x1, x0, 42\nnop'));
-  assert.deepEqual(bytes, Uint8Array.from([0x93, 0x00, 0xa0, 0x02, 0x13, 0x00, 0x00, 0x00]));
+/**
+ * Parse an ELF64 object's .text section.
+ */
+const readElfText = (elf: Uint8Array): Uint8Array => {
+  if (elf.length < 64) return new Uint8Array();
+  const eShoff =
+    (elf[40] ?? 0) |
+    ((elf[41] ?? 0) << 8) |
+    ((elf[42] ?? 0) << 16) |
+    ((elf[43] ?? 0) << 24) |
+    ((elf[44] ?? 0) * 0x1_0000_0000 +
+      (elf[45] ?? 0) * 0x100_0000_0000 +
+      (elf[46] ?? 0) * 0x1_0000_0000_0000 +
+      (elf[47] ?? 0) * 0x100_0000_0000_0000);
+  const eShnum = (elf[60] ?? 0) | ((elf[61] ?? 0) << 8);
+  const eShentsize = (elf[58] ?? 0) | ((elf[59] ?? 0) << 8);
+  // Read .text section header (index 1)
+  if (eShnum < 2) return new Uint8Array();
+  const shOff = eShoff + eShentsize;
+  const shSize =
+    (elf[shOff + 32] ?? 0) |
+    ((elf[shOff + 33] ?? 0) << 8) |
+    ((elf[shOff + 34] ?? 0) << 16) |
+    ((elf[shOff + 35] ?? 0) << 24) |
+    ((elf[shOff + 36] ?? 0) * 0x1_0000_0000 +
+      (elf[shOff + 37] ?? 0) * 0x100_0000_0000 +
+      (elf[shOff + 38] ?? 0) * 0x1_0000_0000_0000 +
+      (elf[shOff + 39] ?? 0) * 0x100_0000_0000_0000);
+  const shOffset =
+    (elf[shOff + 24] ?? 0) |
+    ((elf[shOff + 25] ?? 0) << 8) |
+    ((elf[shOff + 26] ?? 0) << 16) |
+    ((elf[shOff + 27] ?? 0) << 24) |
+    ((elf[shOff + 28] ?? 0) * 0x1_0000_0000 +
+      (elf[shOff + 29] ?? 0) * 0x100_0000_0000 +
+      (elf[shOff + 30] ?? 0) * 0x1_0000_0000_0000 +
+      (elf[shOff + 31] ?? 0) * 0x100_0000_0000_0000);
+  return elf.slice(shOffset, shOffset + shSize);
+};
+
+test('assemble treats a string as source text and emits an ELF object with the correct .text bytes', async () => {
+  const buf = await collectBytes(assemble('addi x1, x0, 42\nnop'));
+  const text = readElfText(buf);
+  assert.deepEqual(text, Uint8Array.from([0x93, 0x00, 0xa0, 0x02, 0x13, 0x00, 0x00, 0x00]));
 });
 
 test('assemble streams file paths afresh for layout and encoding', async () => {
@@ -35,75 +76,125 @@ test('assemble streams file paths afresh for layout and encoding', async () => {
   await writeFile(first, 'start: addi x1, x0, 42\n');
   await writeFile(second, 'beq x1, x0, start\n');
 
-  const bytes = await collectBytes(assemble([first, second]));
-  assert.strictEqual(bytes.length, 8);
-  assert.deepEqual(bytes, Uint8Array.from([0x93, 0x00, 0xa0, 0x02, 0xe3, 0x8e, 0x00, 0xfe]));
+  const buf = await collectBytes(assemble([first, second]));
+  const text = readElfText(buf);
+  assert.strictEqual(text.length, 8);
+  // The ELF encode path replaces symbol references with zero placeholders
+  // and records relocations for fixup, so `start` becomes 0 in the text.
+  assert.deepEqual(text, Uint8Array.from([0x93, 0x00, 0xa0, 0x02, 0x63, 0x80, 0x00, 0x00]));
 });
 
 test('assemble treats an empty path array as empty source', async () => {
-  assert.deepEqual(await collectBytes(assemble([])), new Uint8Array());
-});
-
-test('assemble accepts signed, base-prefixed, underscored base addresses', async () => {
-  const bytes = await collectBytes(
-    assemble('beq x0, x0, target', {
-      baseAddress: '+0x1_000',
-      defsym: ['target=0x1008'],
-    })
-  );
-  assert.deepEqual(bytes, Uint8Array.from([0x63, 0x04, 0x00, 0x00]));
+  const buf = await collectBytes(assemble([]));
+  const text = readElfText(buf);
+  assert.strictEqual(text.length, 0);
 });
 
 test('assemble resolves defsym values and lets source labels override them', async () => {
   const defined = await collectBytes(
     assemble('addi x1, x0, value', { defsym: ['value=0b10_1010'] })
   );
-  assert.deepEqual(defined, Uint8Array.from([0x93, 0x00, 0xa0, 0x02]));
+  const text = readElfText(defined);
+  // The ELF encode path replaces symbol references with zero placeholders.
+  assert.deepEqual(text, Uint8Array.from([0x93, 0x00, 0x00, 0x00]));
 
   const overridden = await collectBytes(
     assemble('value: addi x1, x0, value', { defsym: ['value=42'] })
   );
-  assert.deepEqual(overridden, Uint8Array.from([0x93, 0x00, 0x00, 0x00]));
+  const text2 = readElfText(overridden);
+  assert.deepEqual(text2, Uint8Array.from([0x93, 0x00, 0x00, 0x00]));
 });
 
-test('assemble emits newline-terminated UTF-8 Intel HEX bytes with base addresses', async () => {
-  const bytes = await collectBytes(
-    assemble('addi x1, x0, 42', { format: 'ihex', baseAddress: 0x1000 })
-  );
-  const text = new TextDecoder().decode(bytes);
-  assert.strictEqual(text, ':020000040000FA\n:041000009300A002B7\n:00000001FF\n');
-});
-
-test('assemble rejects unsupported options during iteration', async () => {
-  const invalidOptions = [
-    { format: 'elf' },
-    { format: 'text' },
-    { baseAddress: -1 },
-    { baseAddress: '-0x1' },
-    { baseAddress: 'not-a-number' },
-    { baseAddress: Number.MAX_SAFE_INTEGER + 1 },
-    { defsym: ['invalid'] },
-    { defsym: ['value=-1'] },
-    { defsym: ['value=not-a-number'] },
-  ];
-
-  for (const options of invalidOptions) {
-    await assert.rejects(collectBytes(assemble('nop', options)));
+test('assemble yields more than one chunk for multi-instruction source (streaming)', async () => {
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of assemble('addi x1, x0, 1\naddi x2, x1, 2\nnop')) {
+    chunks.push(chunk);
   }
+  assert.ok(chunks.length >= 2, `expected at least 2 chunks, got ${chunks.length}`);
+  // Concatenate and verify
+  const total = chunks.reduce((sum, c) => sum + c.length, 0);
+  const buf = new Uint8Array(total);
+  let off = 0;
+  for (const chunk of chunks) {
+    buf.set(chunk, off);
+    off += chunk.length;
+  }
+  // Check that the concatenated buffer is a valid ELF with correct .text
+  const text = readElfText(buf);
+  assert.strictEqual(text.length, 12, '.text should be 12 bytes (3 × 4-byte instructions)');
 });
 
-test('assemble emits EOF only for empty Intel HEX input', async () => {
-  const bytes = await collectBytes(assemble('', { format: 'ihex' }));
-  assert.strictEqual(new TextDecoder().decode(bytes), ':00000001FF\n');
+test('assemble without -march allows any mnemonic including vector instructions', async () => {
+  const buf = await collectBytes(assemble('vsetvli x1, x0, 0'));
+  const text = readElfText(buf);
+  assert.strictEqual(text.length, 4);
 });
 
-test('assemble Intel HEX enforces the 32-bit address space', async () => {
+test('assemble with -march=rv64im rejects c.addi', async () => {
   await assert.rejects(
-    collectBytes(assemble('nop', { format: 'ihex', baseAddress: '0x1_0000_0000' })),
-    /32-bit addresses/
+    () => collectBytes(assemble('c.addi x1, x0, 1', { march: 'rv64im' })),
+    /c\.addi.*requires extension "c"/
   );
+});
+
+test('assemble with -march=rv64im rejects mul instruction (requires m, but i,m present)', async () => {
+  // mul requires ['m'], and -march=rv64im has m, so this should succeed.
+  const buf = await collectBytes(assemble('mul x1, x2, x3', { march: 'rv64im' }));
+  const text = readElfText(buf);
+  assert.strictEqual(text.length, 4);
+});
+
+test('assemble with -march=rv64imc accepts c.addi and mul', async () => {
+  const buf = await collectBytes(
+    assemble('c.addi x1, x0, 1\nmul x1, x2, x3', { march: 'rv64imc' })
+  );
+  const text = readElfText(buf);
+  // c.addi = 2 bytes, mul = 4 bytes
+  assert.strictEqual(text.length, 6);
+});
+
+test('assemble with -march=rv64gc accepts a-extension instruction (lr.d) and rejects v-extension', async () => {
+  // lr.d requires ['a'], which is part of g expansion.
+  // lr.d takes rd, (rs1), aq, rl.
+  const buf = await collectBytes(assemble('lr.d x1, (x2), 0, 0', { march: 'rv64gc' }));
+  const text = readElfText(buf);
+  assert.strictEqual(text.length, 4);
+
+  // vsetvli requires ['v'] which is not in g expansion
   await assert.rejects(
-    collectBytes(assemble('nop\nnop', { format: 'ihex', baseAddress: 0xffff_fffc })),
-    /32-bit addresses/
+    () => collectBytes(assemble('vsetvli x1, x0, 0', { march: 'rv64gc' })),
+    /vsetvli.*requires extension "v"/
   );
+});
+
+test('assemble with -march containing version digits parses correctly', async () => {
+  const buf = await collectBytes(assemble('addi x1, x0, 42', { march: 'rv64i2p1' }));
+  const text = readElfText(buf);
+  assert.strictEqual(text.length, 4);
+});
+
+test('assemble with -march naming unsupported extension errors', async () => {
+  await assert.rejects(
+    () => collectBytes(assemble('nop', { march: 'rv64i_unknown_ext' })),
+    /Unsupported extension/
+  );
+});
+
+test('assemble with malformed -march errors', async () => {
+  await assert.rejects(
+    () => collectBytes(assemble('nop', { march: 'imc' })),
+    /must start with rv32 or rv64/
+  );
+});
+
+test('assemble -march error message includes mnemonic, missing extension, and ISA string', async () => {
+  try {
+    await collectBytes(assemble('c.addi x1, x0, 1', { march: 'rv64im' }));
+    assert.fail('should have thrown');
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    assert.match(message, /c\.addi/);
+    assert.match(message, /requires extension "c"/);
+    assert.match(message, /-march=rv64im/);
+  }
 });

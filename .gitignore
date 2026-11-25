@@ -3,3 +3,4 @@ dist/
 *.tgz
 a.out
 .DS_Store
+.pi/

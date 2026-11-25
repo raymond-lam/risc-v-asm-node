@@ -12,21 +12,27 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Note: These tests were ported from a previous buildSymbolTable test suite.
+ * The old buildSymbolTable returned a plain Map<string, number> directly; the
+ * surviving API buildSymbolTableWithRefs returns an object with a .symbols
+ * field.  Every old assertion has been preserved, adapted to the .symbols
+ * accessor.
  */
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { INSTRUCTION_MAP } from '#instructions';
-import { buildSymbolTable } from '#symbol-table';
+import { buildSymbolTableWithRefs } from '#symbol-table';
 import { sourceLines } from '#testing/stream';
 
 test('symbols use exact cumulative byte addresses across mixed lengths', async () => {
-  const symbols = await buildSymbolTable(
+  const { symbols } = await buildSymbolTableWithRefs(
     sourceLines([
       'start: addi x1, x0, 4',
       'compressed: c.addi x1, 1',
-      'address: la x2, %pcrel_hi(data)',
+      'address: la x2, %pcrel_hi(data), %pcrel_lo(data)',
       'large: li x3, 0x123456789abcdef',
       'end: add x4, x5, x6',
     ])
@@ -41,7 +47,7 @@ test('symbols use exact cumulative byte addresses across mixed lengths', async (
 });
 
 test('label-only lines and multiple labels share the current address', async () => {
-  const symbols = await buildSymbolTable(
+  const { symbols } = await buildSymbolTableWithRefs(
     sourceLines(['outer: inner: addi x1, x0, 4', 'next:', 'third: nop', 'last:'])
   );
 
@@ -53,7 +59,7 @@ test('label-only lines and multiple labels share the current address', async () 
 });
 
 test('comments and blank lines are handled', async () => {
-  const symbols = await buildSymbolTable(
+  const { symbols } = await buildSymbolTableWithRefs(
     sourceLines([
       '# leading comment',
       '// another comment',
@@ -69,17 +75,23 @@ test('comments and blank lines are handled', async () => {
 
 test('startAddress is honored and must be a nonnegative safe integer', async () => {
   const lines = ['start: addi x1, x0, 4'];
-  assert.equal((await buildSymbolTable(sourceLines(lines), 16)).get('start'), 16);
-  await assert.rejects(async () => await buildSymbolTable(sourceLines(lines), -1), /startAddress/);
-  await assert.rejects(async () => await buildSymbolTable(sourceLines(lines), 1.5), /startAddress/);
+  assert.equal((await buildSymbolTableWithRefs(sourceLines(lines), 16)).symbols.get('start'), 16);
   await assert.rejects(
-    async () => await buildSymbolTable(sourceLines(lines), Number.NaN),
+    async () => await buildSymbolTableWithRefs(sourceLines(lines), -1),
+    /startAddress/
+  );
+  await assert.rejects(
+    async () => await buildSymbolTableWithRefs(sourceLines(lines), 1.5),
+    /startAddress/
+  );
+  await assert.rejects(
+    async () => await buildSymbolTableWithRefs(sourceLines(lines), Number.NaN),
     /startAddress/
   );
 });
 
 test('li uses 4 or 44 bytes at all signed-12-bit boundaries', async () => {
-  const symbols = await buildSymbolTable(
+  const { symbols } = await buildSymbolTableWithRefs(
     sourceLines([
       'small: li x1, 2047',
       'low: li x2, -2048',
@@ -98,50 +110,76 @@ test('li uses 4 or 44 bytes at all signed-12-bit boundaries', async () => {
 
 test('duplicate and malformed labels fail with line numbers', async () => {
   await assert.rejects(
-    async () => await buildSymbolTable(sourceLines(['one: nop', 'one: nop'])),
+    async () => await buildSymbolTableWithRefs(sourceLines(['one: nop', 'one: nop'])),
     /Duplicate label "one" at line 2/
   );
   await assert.rejects(
-    async () => await buildSymbolTable(sourceLines(['same: same: nop'])),
+    async () => await buildSymbolTableWithRefs(sourceLines(['same: same: nop'])),
     /Duplicate label "same" at line 1/
   );
   await assert.rejects(
-    async () => await buildSymbolTable(sourceLines(['bad-label: nop'])),
+    async () => await buildSymbolTableWithRefs(sourceLines(['bad-label: nop'])),
     /Malformed label at line 1/
   );
   await assert.rejects(
-    async () => await buildSymbolTable(sourceLines([': nop'])),
+    async () => await buildSymbolTableWithRefs(sourceLines([': nop'])),
     /Malformed label at line 1/
   );
 });
 
 test('unknown mnemonics and directives fail with line numbers', async () => {
   await assert.rejects(
-    async () => await buildSymbolTable(sourceLines(['start: nop', 'bogus x1'])),
+    async () => await buildSymbolTableWithRefs(sourceLines(['start: nop', 'bogus x1'])),
     /Unknown mnemonic "bogus" at line 2/
   );
   await assert.rejects(
-    async () => await buildSymbolTable(sourceLines(['.text'])),
-    /Unknown mnemonic ".text" at line 1/
+    async () => await buildSymbolTableWithRefs(sourceLines(['.unknown_directive'])),
+    /Unknown directive ".unknown_directive" at line 1/
   );
+});
+
+test('.text is accepted as a no-op directive', async () => {
+  const { symbols } = await buildSymbolTableWithRefs(sourceLines(['.text', 'start: nop', '.text']));
+  assert.strictEqual(symbols.get('start'), 0);
+});
+
+test('.globl marks a label as global', async () => {
+  const { globalLabels } = await buildSymbolTableWithRefs(
+    sourceLines(['foo: addi x1, x0, 1', '.globl foo', 'bar: nop', '.globl bar'])
+  );
+  assert.ok(globalLabels.has('foo'));
+  assert.ok(globalLabels.has('bar'));
+});
+
+test('.global is an alias for .globl', async () => {
+  const { globalLabels } = await buildSymbolTableWithRefs(sourceLines(['baz: nop', '.global baz']));
+  assert.ok(globalLabels.has('baz'));
+});
+
+test('.globl with undefined label produces an undefined global', async () => {
+  const { globalLabels, symbols } = await buildSymbolTableWithRefs(
+    sourceLines(['.globl undef_lbl', 'start: nop'])
+  );
+  assert.ok(globalLabels.has('undef_lbl'));
+  assert.ok(!symbols.has('undef_lbl'));
 });
 
 test('li requires a numeric constant for variable-length layout', async () => {
   await assert.rejects(
-    async () => await buildSymbolTable(sourceLines(['bad: li x1, target'])),
+    async () => await buildSymbolTableWithRefs(sourceLines(['bad: li x1, target'])),
     /numeric constant.*target/
   );
   await assert.rejects(
-    async () => await buildSymbolTable(sourceLines(['bad: li x1'])),
-    /Missing li immediate at line 1/
+    async () => await buildSymbolTableWithRefs(sourceLines(['bad: li x1'])),
+    /Wrong number of operands for "li" at line 1/
   );
 });
 
 test('fixed-length pseudos ignore relocation-like operand text', async () => {
-  const symbols = await buildSymbolTable(
+  const { symbols } = await buildSymbolTableWithRefs(
     sourceLines([
-      'address: la x1, %pcrel_hi(target)',
-      'call: call x2, %pcrel_lo(target)',
+      'address: la x1, %pcrel_hi(target), %pcrel_lo(target)',
+      'call: call x2, %pcrel_hi(target), %pcrel_lo(target)',
       'end: nop',
     ])
   );
@@ -152,7 +190,7 @@ test('fixed-length pseudos ignore relocation-like operand text', async () => {
 });
 
 test('literal forms include signs, prefixes, and underscore separators', async () => {
-  const symbols = await buildSymbolTable(
+  const { symbols } = await buildSymbolTableWithRefs(
     sourceLines([
       'hex: li x1, 0x7ff',
       'binary: li x2, 0b1000_0000_0000',
@@ -177,7 +215,7 @@ test('literal forms include signs, prefixes, and underscore separators', async (
 
 test('address overflow is rejected at the safe-integer boundary', async () => {
   await assert.rejects(
-    async () => await buildSymbolTable(sourceLines(['nop']), Number.MAX_SAFE_INTEGER),
+    async () => await buildSymbolTableWithRefs(sourceLines(['nop']), Number.MAX_SAFE_INTEGER),
     /Address overflow at line 1/
   );
 });
@@ -186,5 +224,31 @@ test("symbol layout advances by the instruction map's reported length", async ()
   const reported = INSTRUCTION_MAP.get('addi')?.instructionLength;
   assert.equal(typeof reported, 'number');
   const lines = ['start:', 'addi x1, x0, 4', 'end:'];
-  assert.equal((await buildSymbolTable(sourceLines(lines))).get('end'), reported);
+  assert.equal((await buildSymbolTableWithRefs(sourceLines(lines))).symbols.get('end'), reported);
+});
+
+test('.align directive with exponent zero is no-op', async () => {
+  const { sectionStates } = await buildSymbolTableWithRefs(sourceLines(['nop', '.align 0', 'nop']));
+  assert.strictEqual(sectionStates.get('.text')?.size, 8);
+});
+
+test('.bss rejects .word directive with line number', async () => {
+  await assert.rejects(
+    async () => await buildSymbolTableWithRefs(sourceLines(['.bss', 'val: .word 7', '.text'])),
+    /"\.word" at line 2 in \.bss section is not allowed/
+  );
+});
+
+test('.bss rejects .byte directive with line number', async () => {
+  await assert.rejects(
+    async () => await buildSymbolTableWithRefs(sourceLines(['.bss', '.byte 1'])),
+    /"\.byte" at line 2 in \.bss section is not allowed/
+  );
+});
+
+test('.bss rejects instruction with line number', async () => {
+  await assert.rejects(
+    async () => await buildSymbolTableWithRefs(sourceLines(['.bss', 'nop'])),
+    /Instruction not allowed in \.bss section at line 2/
+  );
 });

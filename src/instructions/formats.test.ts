@@ -91,11 +91,11 @@ test('compressed load/store formats encode known instructions', () => {
     encodeCi(0b10, 0b010, 0, 6, 0), // c.lwsp x6, 0(x2)
     bytes(0x02, 0x43)
   );
-  // c.ldsp offset 8: uimm[7:6]=00 at inst[6:5] and uimm[4:2]=010 at inst[4:2],
-  // so the imm5 field is 0b00010.
+  // c.ldsp offset 8: uimm[4:3]=01 at inst[6:5] and uimm[8:6]=000 at inst[4:2],
+  // so the imm5 field is 0b01000.
   assert.deepEqual(
-    encodeCi(0b10, 0b011, 0, 6, (0b00 << 3) | 0b010), // c.ldsp x6, 8(x2)
-    bytes(0x0a, 0x63)
+    encodeCi(0b10, 0b011, 0, 6, (0b01 << 3) | 0b000), // c.ldsp x6, 8(x2)
+    bytes(0x22, 0x63)
   );
   // c.addi16sp x2, 32: nzimm[9]=0 at inst[12]; nzimm[5] (the 32 value) at inst[2].
   assert.deepEqual(

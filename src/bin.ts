@@ -7,6 +7,7 @@
 /* oxlint-disable func-style -- Async generators cannot be written as arrow functions. */
 
 import { createWriteStream } from 'node:fs';
+import { createInterface } from 'node:readline/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
@@ -23,28 +24,29 @@ type CliIo = Readonly<{
 
 type CliOptions = Readonly<{
   output: string;
-  format: string;
-  baseAddress: string;
-  mrelax: boolean;
+  mrelax?: boolean;
   mnoRelax?: boolean;
+  march?: string;
   marchAttr: boolean;
   mnoArchAttr?: boolean;
-  mcsrCheck: boolean;
+  mcsrCheck?: boolean;
   mnoCsrCheck?: boolean;
+  mbigEndian?: boolean;
   defsym: string[];
   targetHelp?: boolean;
 }>;
 
 const VERSION = packageMetadata.version;
 const TARGET_HELP = `RISC-V options:
+  -march=ISA                set architecture (default: no restriction)
   --mlittle-endian           little-endian output (default)
-  --mrelax                   default; not implemented
   --mno-relax                disable linker relaxation (required override)
-  --march-attr               generate ELF arch attributes (not implemented)
+  --march-attr               generate ELF arch attributes
   --mno-arch-attr            do not generate ELF arch attributes (default)
-  --mcsr-check               enable CSR checking (not implemented)
   --mno-csr-check            disable CSR checking (default)
   --fno-pic                  non-position-independent code (default)
+  -o, --output FILE          output file (default: a.out)
+  --defsym SYM=VAL           define a nonnegative integer absolute symbol
 `;
 
 const defaultIo: CliIo = {
@@ -62,6 +64,21 @@ const defaultIo: CliIo = {
 const collect = (value: string, previous: string[]): string[] => [...previous, value];
 
 /**
+ * Read the entirety of stdin as a single string.
+ *
+ * @returns The complete stdin content.
+ */
+const stdinText = async (): Promise<string> => {
+  const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
+  const lines: string[] = [];
+  for await (const line of rl) {
+    lines.push(line);
+  }
+  rl.close();
+  return lines.join('\n');
+};
+
+/**
  * Normalize supported GNU-style one-dash and joined options to long options.
  *
  * @param argv - Raw command-line arguments, including the executable and script.
@@ -73,10 +90,13 @@ const normalizeArguments = (argv: readonly string[]): string[] =>
     if (argument === '-version') return ['--version'];
     // Normalize supported one-dash target defaults to their long forms.
     const machineBool =
-      /^(-m(?:little-endian|relax|no-relax|arch-attr|no-arch-attr|csr-check|no-csr-check))$/.exec(
+      /^(-m(?:little-endian|relax|no-relax|big-endian|arch-attr|no-arch-attr|csr-check|no-csr-check))$/.exec(
         argument
       );
     if (machineBool) return [`--${machineBool[1]!.slice(1)}`];
+    // Normalize -march=VALUE to --march=VALUE for Commander.
+    const marchArg = /^-march=(.+)$/.exec(argument);
+    if (marchArg) return [`--march=${marchArg[1]!}`];
     // Split the joined -oFILE form into separate flag and value arguments.
     if (/^-o.+/.test(argument)) return ['-o', argument.slice(2)];
     if (argument === '-fno-pic') return ['--fno-pic'];
@@ -90,14 +110,17 @@ const normalizeArguments = (argv: readonly string[]): string[] =>
  * @throws Error for the first unsupported default that lacks an explicit override.
  */
 const validateCliOptions = (options: CliOptions): void => {
+  if (options.mrelax) {
+    throw new Error('Linker relaxation is not implemented; use -mno-relax');
+  }
   if (!options.mnoRelax) {
     throw new Error('Linker relaxation is not implemented; use -mno-relax');
   }
-  if (options.marchAttr) {
-    throw new Error('ELF architecture attributes are not implemented; use -mno-arch-attr');
-  }
   if (options.mcsrCheck) {
     throw new Error('CSR checking is not implemented; use -mno-csr-check');
+  }
+  if (options.mbigEndian) {
+    throw new Error('Big-endian output is not implemented; use -mlittle-endian');
   }
 };
 
@@ -111,20 +134,20 @@ const createProgram = (io: CliIo): Command => {
   const program = new Command();
   program
     .name('risc-v-asm')
-    .description('Assemble a strict RV64I/RV64M subset into flat output.')
+    .description('Assemble RISC-V assembly into ELF64 object files (975+ mnemonics).')
     .usage('[options] [file...]')
     .argument('[file...]', 'assembly source files')
     .option('-o, --output <objfile>', 'output file; - writes stdout', 'a.out')
-    .option('--format <format>', 'output format', 'elf')
-    .option('--base-address <address>', 'flat-output origin', '0')
-    .option('--mlittle-endian', 'little-endian output (default)', true)
-    .option('--mrelax', 'default; linker relaxation (not implemented)', true)
+    .option('--mlittle-endian', 'little-endian output (default)')
+    .option('--mrelax', 'linker relaxation (not implemented); use --mno-relax')
     .option('--mno-relax', 'disable linker relaxation (required override)')
-    .option('--march-attr', 'generate ELF arch attributes (not implemented)')
+    .option('--march <arch>', 'set architecture (default: no restriction)')
+    .option('--march-attr', 'generate ELF arch attributes')
     .option('--mno-arch-attr', 'do not generate ELF arch attributes (default)')
-    .option('--mcsr-check', 'enable CSR checking (not implemented)')
+    .option('--mcsr-check', 'CSR checking (not implemented); use --mno-csr-check')
     .option('--mno-csr-check', 'disable CSR checking (default)')
-    .option('--fno-pic', 'non-position-independent code (default)', true)
+    .option('--mbig-endian', 'big-endian output (not implemented); use --mlittle-endian')
+    .option('--fno-pic', 'non-position-independent code (default)')
     .option('--defsym <symbol=value>', 'define an integer symbol', collect, [])
     .option('--target-help', 'print RISC-V target options')
     .version(VERSION, '--version', 'print version and exit')
@@ -143,7 +166,7 @@ const createProgram = (io: CliIo): Command => {
  * @param io - Output sinks, defaulting to the process streams.
  * @returns The process exit code.
  */
-export const runCli = async (
+const runCli = async (
   argv: readonly string[] = process.argv,
   io: CliIo = defaultIo
 ): Promise<number> => {
@@ -155,14 +178,19 @@ export const runCli = async (
         io.stdout.write(TARGET_HELP);
         return;
       }
-      if (files.length === 0) throw new Error('no input files');
       validateCliOptions(options);
-      const assemblyOptions = {
-        format: options.format,
-        baseAddress: options.baseAddress,
-        defsym: options.defsym,
-      };
-      const bytes = assemble(files, assemblyOptions);
+      const useStdin = files.length === 0 || files.includes('-');
+      const bytes = useStdin
+        ? assemble(await stdinText(), {
+            defsym: options.defsym,
+            marchAttr: options.marchAttr,
+            march: options.march,
+          })
+        : assemble(files, {
+            defsym: options.defsym,
+            marchAttr: options.marchAttr,
+            march: options.march,
+          });
       if (options.output === '-') {
         for await (const chunk of bytes) io.stdout.write(chunk);
         return;
