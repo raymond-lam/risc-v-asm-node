@@ -24,5 +24,10 @@ test('public barrel exposes exactly the assemble function', async () => {
   assert.deepEqual(Object.keys(publicApi), ['assemble']);
   const output = publicApi.assemble('nop');
   assert.strictEqual(typeof output.next, 'function');
-  assert.deepEqual(await collectBytes(output), Uint8Array.from([0x13, 0x00, 0x00, 0x00]));
+  const buf = await collectBytes(output);
+  // The ELF output should start with ELF magic (0x7f 'E' 'L' 'F')
+  assert.strictEqual(buf[0], 0x7f);
+  assert.strictEqual(buf[1], 0x45);
+  assert.strictEqual(buf[2], 0x4c);
+  assert.strictEqual(buf[3], 0x46);
 });

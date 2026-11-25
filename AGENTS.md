@@ -2,7 +2,7 @@
 
 ## 1. Project purpose
 
-`risc-v-asm` is an **ESM-only TypeScript library** for assembling a strict **RV64I/RV64M** flat-assembler subset, plus a **GNU-as-like CLI** that wraps that library. It provides instruction encoders, a one-pass symbol table for flat streams, pseudo-instruction expansion, and helpers for Intel HEX output. It is **not** a full GNU assembler: no ELF, no linker relaxation, no compressed instructions, no directives/relocations/includes, no debug info, no FP/vector.
+`risc-v-asm` is an **ESM-only TypeScript library** for assembling RISC-V source into **ELF64 ET_REL** object files. It provides instruction encoders (975 mnemonics across I, M, A, F, D, Q, Zfh, C, Zba, Zbb, Zbc, Zbkb, Zbkx, Zbs, Zabha, Zacas, Zicsr, Zifencei, Zcb, Zcmp-style, H, and V), a one-pass symbol table with per-section label tracking, pseudo-instruction expansion, data directives (`.word`/`.dword`/`.byte`/`.string`/`.zero`/`.align`), multi-section support (`.text`/`.data`/`.rodata`/`.bss`), per-section relocations, and an ELF64 ET_REL writer. It is **not** a full GNU assembler: no linker relaxation, no includes, no debug info, no FP/vector CSR checking.
 
 ## 2. Required environment
 
@@ -36,16 +36,17 @@ Tests are **colocated** at `src/**/*.test.ts`. Shared test helpers live in `test
 ```
 src/
 ├── index.ts                 # Public barrel — exports only the named assemble function
-├── bin.ts                   # Executable entry (#!/usr/bin/env node) and CLI implementation (named export runCli)
-├── formats.ts               # Intel HEX stream formatting (named export intelHex)
+├── bin.ts                   # Executable entry (#!/usr/bin/env node) and CLI implementation
 ├── parse.ts                 # Standalone parsers: parseInstruction, parseIntegerLiteral (named exports)
-├── symbol-table.ts          # buildSymbolTable (named export)
+├── statements.ts            # Pure line parser: parseStatement → directive or instruction (named export)
+├── layout.ts                # Streaming layout pass: layout → Placed records (default export)
+├── symbol-table.ts          # buildSymbolTableWithRefs — folds Placed records (named export)
 ├── utils/
 │   ├── bytes.ts             # Little-endian 16/32-bit serializers (named exports)
 │   └── integer.ts           # Nonnegative safe-integer conversion (named export safeInteger)
 ├── assemble/
 │   ├── index.ts             # Public two-pass assembler, input streams, and option validation
-│   └── flat.ts              # assembleFlat async generator (named export)
+│   └── encode.ts            # Streaming instruction encoder (named export)
 ├── instructions/
 │   ├── index.ts             # Package barrel — named re-exports INSTRUCTION_MAP, resolveOperands, InstructionSignature
 │   ├── instruction-map.ts   # INSTRUCTION_MAP — the authoritative mnemonic→entry registry
@@ -84,47 +85,142 @@ async function* assemble(
 
 - This is a **direct async generator**, not a promise for a generator. Consumers use `for await (const chunk of assemble(...))` without awaiting the call itself.
 - A string is always assembly source text. A readonly string array contains file paths; an empty array is empty source and never means stdin.
-- `AssembleOptions` may remain private to `assemble/index.ts`. It contains optional `format`, `baseAddress`, and `defsym` fields, with the same relevant validation and integer syntax as the CLI. Do not add output, statistics, help, or extra root exports.
-- Validation and both assembly passes run when iteration begins. `assemble` creates a fresh line stream for each pass, awaits internal `buildSymbolTable`, merges predefined symbols before labels so labels override same-name definitions, and encodes the fresh stream.
+- `AssembleOptions` is private to `assemble/index.ts`. It contains `defsym` (repeatable `symbol=value` definitions) and `marchAttr` (whether to emit `.riscv.attributes` section).
+- Three streaming passes happen when the generator is iterated (see the per-pass sections below). The output is always an **ELF64 ET_REL** object, streamed as the sequence: ELF header, `.text` instruction chunks, trailer sections.
 - Path arrays are streamed with `createReadStream` and `readline` on each pass. Source strings are split and streamified afresh. Production source must not synchronously open or read files.
-- Binary output yields encoded `Uint8Array` chunks. Intel HEX output also yields `Uint8Array`, containing newline-terminated UTF-8 records, with 16-byte data limits, 64 KiB boundaries, extended addresses, checksums, EOF, and 32-bit range enforcement.
 
-### Internal pass 1: buildSymbolTable
+### Internal pass 1: buildSymbolTableWithRefs
 
 ```ts
-const buildSymbolTable = async (
+type SectionState = Readonly<{
+  name: string;
+  shType: number;
+  flags: number;
+  size: number;
+  alignment: number;
+}>;
+
+type SymbolTableWithReferences = Readonly<{
+  symbols: ReadonlyMap<string, number>;
+  references: readonly SymbolReference[];
+  hasCompressed: boolean;
+  globalLabels: ReadonlySet<string>;
+  sectionStates: ReadonlyMap<string, SectionState>;
+  sectionRelocations: ReadonlyMap<string, readonly RelocationSpec[]>;
+  labelSections: ReadonlyMap<string, string>;
+}>;
+
+const buildSymbolTableWithRefs = async (
   lines: AsyncIterable<string>,
-  startAddress?: number
-): Promise<ReadonlyMap<string, number>>
+  startAddress?: number,
+  allowedExtensions?: { readonly set: ReadonlySet<string>; readonly isa: string }
+): Promise<SymbolTableWithReferences>
 ```
 
-- Consumes the source stream once to resolve labels to byte addresses.
-- Rejects unknown mnemonics, malformed labels, duplicate labels, and non-numeric `li` immediates with `Error` containing a line number.
+- Implemented as a three-stage pipeline. `parseStatement` in `statements.ts` is a pure line parser returning the leading labels plus a directive or instruction. `layout` in `layout.ts` is an `AsyncGenerator<Placed>` that owns all section state (cursors, alignments, compressed detection) and emits one record per label, section switch, global, directive, or instruction, including each instruction's precomputed references and relocations. `buildSymbolTableWithRefs` is a thin driver that folds those records through five reducers (symbols, references, relocations, sections, compressed); it never recomputes addresses, sizes, or relocations.
+- Consumes the source stream once to resolve labels to byte addresses, compute per-section sizes, detect compressed (`c.*`) instructions, collect relocation specifications per section for every symbol-referencing operand (including data-directive symbol operands), and collect every operand text that is not a register name or integer literal (as a `SymbolReference`).
+- Handles section-switching directives (`.text`, `.data`, `.rodata`, `.bss`, `.section`), data directives (`.word`, `.dword`, `.byte`, `.half`, `.short`, `.string`, `.asciz`, `.zero`, `.space`, `.align`, `.balign`, `.p2align`), and global-visibility directives (`.globl`, `.global`).
+- Alignment semantics: `.align <e>` / `.p2align <e>` align to `2^<e>`-byte boundary (power-of-two exponent); `.balign <n>` aligns to `<n>`-byte boundary. `.align 0` is a no-op. Text padding uses 4-byte NOP (`0x00000013`) and/or 2-byte c.nop (`0x0001`); data padding uses zeros. BSS permits only `.zero`/`.space` and alignment directives.
+- Rejects unknown mnemonics, unknown directives, malformed labels, duplicate labels, non-numeric `li` immediates, and invalid data-directive arguments with `Error` containing a line number.
 - `startAddress` must be a nonnegative safe integer (default `0`).
-- Returns a type-level-readonly `Map<string, number>`.
-- This is internal only; do not re-export it from `src/index.ts`.
+- Returns the resolved label map, collected references, whether any compressed instruction occurs, the set of global labels, per-section states (type, flags, size, alignment), per-section relocation lists, and a mapping from label names to their containing section name.
 
-### Internal pass 2: assembleFlat
+### Internal pass 2 (streaming): encode
 
 ```ts
-async function* assembleFlat(
+type EncodeMetadata = {
+  readonly totalTextSize: number;
+  readonly relocations: readonly RelocationSpec[];
+  readonly hasCompressed: boolean;
+};
+
+async function* encode(
   lines: AsyncIterable<string>,
   symbols: ReadonlyMap<string, number>,
   baseAddress = 0
+): AsyncGenerator<Uint8Array, EncodeMetadata>
+```
+
+- Consumes the `Placed` records produced by `layout` (it calls `layout(lines, baseAddress)` internally) instead of re-parsing source text, so addresses, sizes, zero-substituted operands, and relocations all come from the layout pass.
+- Encodes each instruction and yields the bytes as a separate `Uint8Array` chunk (one per instruction line). Data directives in `.data` and `.rodata` are buffered until all text instruction chunks are yielded, then emitted in section order (`.data` bytes first, then `.rodata` bytes); their bytes are materialized here from the directive's `text`, not during pass 1. `.bss` sections contribute no bytes.
+- Every operand that is a symbol reference (not a register or integer literal) reaches the encoder as a `0` placeholder; the corresponding `RelocationSpec` (recorded by `layout`) is emitted in the appropriate `.rela.*` section (`.rela.text`, `.rela.data`, `.rela.rodata`). The caller is responsible for resolving relocations.
+- This is the **streaming** pass for `.text` instructions (yielded immediately) and buffered for `.data`/`.rodata` (yielded after all instructions).
+
+### ELF streaming writer: writeElfStream
+
+```ts
+type ElfParts = Readonly<{
+  ehdr: Uint8Array;
+  relaData: readonly Uint8Array[];    // one per content section
+  symtabData: Uint8Array;
+  strData: Uint8Array;
+  shstrData: Uint8Array;
+  attrData: Uint8Array;
+  shdrTable: Uint8Array;
+}>;
+
+const computeElfParts = (
+  sectionStates: ReadonlyMap<string, SectionState>,
+  sectionRelocations: ReadonlyMap<string, readonly RelocationSpec[]>,
+  labelSymbols: ReadonlyMap<string, number>,
+  references: readonly SymbolReference[],
+  predefinedSymbols: ReadonlyMap<string, number>,
+  hasCompressed: boolean,
+  marchAttr?: boolean,
+  globalLabels?: ReadonlySet<string>,
+  labelSections?: ReadonlyMap<string, string>
+): ElfParts;
+
+async function* writeElfStream(
+  contentChunks: AsyncIterable<Uint8Array>,
+  parts: ElfParts
 ): AsyncGenerator<Uint8Array>
 ```
 
-- Encodes each line against the resolved symbol table.
-- Yields `Uint8Array` chunks (one per instruction line).
-- Does **not** build symbols — `assemble` owns that orchestration.
-- Uses only the three positional arguments above. There is no `AssemblyOptions` object and no `extensions` option.
-- Intentionally **permissive**: malformed source can trigger a non-null assertion failure, and there is no range checking on immediates or offsets. Public `assemble` validates options before invoking it.
+- `computeElfParts` pre-computes all ELF trailer data per-section (`.rela.text`, `.rela.data`, `.rela.rodata`), `.symtab`, `.strtab`, `.shstrtab`, optional `.riscv.attributes`, and the section header table) using the known per-section sizes and relocation lists. It assigns section indices, computes file offsets, and produces each section header. The caller provides the already-known sizes so the ELF header can be placed first.
+- `writeElfStream` yields the complete ELF object as a sequence:
+  1. 64-byte ELF header (`e_shoff` pointing past the trailer)
+  2. Content sections in order: `.text` (streamed), `.data` (buffered), `.rodata` (buffered)
+  3. `.rela.text`, `.rela.data`, `.rela.rodata` sections
+  4. `.symtab` section
+  5. `.strtab` section
+  6. `.shstrtab` section
+  7. `.riscv.attributes` section (only if non-empty)
+  8. Section header table
+- `.text` bytes are never fully buffered; each instruction chunk is yielded as it arrives from the encoder. `.data` and `.rodata` are emitted from the pre-computed `contentChunks` iterable which yields text chunks first, then buffered data and rodata bytes.
+
+### `assemble` orchestration
+
+`assemble` performs exactly two streaming passes over the source, each re-creating the line stream:
+
+1. `buildSymbolTableWithRefs` — resolves labels, collects symbol references, computes per-section sizes, detects compressed instructions, and builds per-section relocation lists (`.rela.text`, `.rela.data`, `.rela.rodata`). Everything needed for the ELF header layout is known after this single pass.
+2. `encode` (via `writeElfStream`) — streams instruction bytes one chunk at a time. The ELF header is written first (pre-computed from pass-1 metadata), followed by `.text` chunks (streamed immediately), then `.data` chunks and `.rodata` chunks (buffered until EOF in the encode pass), then the trailer sections (`.rela.text`, `.rela.data`, `.rela.rodata`, `.symtab`, `.strtab`, `.shstrtab`, optional `.riscv.attributes`, and the section header table).
+
+Memory footprint:
+
+- `.text` content: **O(1)** — one instruction chunk at a time.
+- `.data`/`.rodata` content: **O(total data size)** — buffered until all instructions are emitted.
+- Relocation records: **O(number of symbol references)**, 24 bytes each.
+- Symbol/string tables: **O(symbol count)**, small relative to assembly input.
+
+### Collecting helper
+
+A `collectEncode` test helper is provided in `testing/encode.ts` (imported via `#testing/encode`):
+
+```ts
+// testing/encode.ts
+const collectEncode = async (
+  lines: AsyncIterable<string>,
+  symbols: ReadonlyMap<string, number>,
+  baseAddress?: number
+): Promise<{ readonly textBytes: Uint8Array } & EncodeMetadata>
+```
 
 ### CLI input and output behavior
 
-- `bin.ts` calls public `assemble` from `#index`; it does not own symbol-table, flat-assembly, source-line, Intel HEX, or defsym implementation details.
+- `bin.ts` calls public `assemble` from `#index`; it does not own symbol-table, encoding, ELF writing, or defsym implementation details.
 - At least one source path is required. CLI stdin and `-` input paths are unsupported; path arrays go directly to `assemble` and are reopened for its two passes. `-` remains valid only as the output path.
-- Output remains streaming via `pipeline(Readable.from(output), createWriteStream(path))` or direct stdout writes. Intel HEX conversion tracks only a small pending byte array.
+- Output is always an ELF64 ET_REL object, streamed via `pipeline(Readable.from(output), createWriteStream(path))` or direct stdout writes.
 
 ## 6. Instruction metadata source of truth
 
@@ -154,6 +250,13 @@ type InstructionSignature = {
     | { readonly type: 'register'; readonly sourceOperand: number }
     | { readonly type: 'number'; readonly sourceOperand: number }
     | {
+        readonly type: 'numberPart';
+        readonly sourceOperand: number;
+        readonly bits: readonly [number, number];
+        readonly signed: boolean;
+        readonly nonzero?: boolean;
+      }
+    | {
         readonly type: 'address';
         readonly sourceOperand: number;
         readonly addressPart:
@@ -172,12 +275,26 @@ type InstructionSignature = {
 
 `sourceSignature` describes what the source operand _means_; `encoderSignature` maps each encoder positional argument to a source operand (or constant). The `addressPart` field distributes address/branch/jump offset bits to the scattered immediate fields in the encoder.
 
+`numberPart` declares one field of an immediate that a compressed instruction splits across several encoder arguments; `bits` is that field's `[low, high]` position in the immediate. `signed` is required and states whether the immediate those fields spell together is a signed or unsigned value (c.li's imm[5:0] is signed, c.slli's shamt is unsigned), because `operands.ts` checks the range of the assembled immediate from the union of the fields sharing one source operand. Every field in one union must declare the same `signed`; a mixed union is a metadata error. `nonzero` is optional and marks the zero immediate as a reserved encoding (c.lui and c.addi4spn); an absent `nonzero` means zero is allowed, and a union is nonzero when any of its fields sets it.
+
 ### Critical rule: stay table-driven
 
-- **No mnemonic-specific encode helpers** — the flat assembler (`flat.ts`) uses only `INSTRUCTION_MAP.get(mnemonic)!` and `resolveOperands()`; it never inspects which mnemonic it is assembling.
+- **No mnemonic-specific encode helpers** — the assembler uses only `INSTRUCTION_MAP.get(mnemonic)!` and `resolveOperands()`; it never inspects which mnemonic it is assembling.
 - **No second mnemonic registry** — `INSTRUCTION_MAP` is the one and only.
 - **No switches, Sets of mnemonics, or handler closures** — operand resolution in `operands.ts` is purely generic, driven by the encoder signature.
 - **No removing instructions** — never delete a mnemonic, encoder, or registry entry unless explicitly requested.
+
+### `-march` enforcement
+
+`-march=VALUE` parsing and validation live in `src/assemble/march.ts`:
+`parseMarch` expands the ISA string (including gas implications like
+g→i,m,a,f,d,zicsr,zifencei and d→f), and `validateMarch` rejects unsupported
+extension names. When a non-undefined march is passed to `assemble()`,
+`buildSymbolTableWithRefs` in `symbol-table.ts` checks every instruction's
+`requires` field against the allowed set and throws a descriptive error
+naming the mnemonic, missing extension, and ISA string during pass 1 (before
+any output). The default (no flag) is unrestricted — every mnemonic in
+`INSTRUCTION_MAP` assembles.
 
 ### Linting configuration
 
@@ -227,32 +344,16 @@ const parseIntegerLiteral = (text: string): bigint | null
 - `li` with non-numeric immediate → `Error`.
 - Address overflow → `Error`.
 
-### Flat assembly permissiveness
-
-`flat.ts` assumes valid source. It uses non-null assertions (`!`) everywhere: `INSTRUCTION_MAP.get(mnemonic)!`, `signature!`. No range checking on immediates, offsets, or register numbers. That is intentional — the library trusts the symbol-table pass and the caller.
-
 ## 8. CLI behavior and scope
 
-`bin.ts` (named export `runCli`) provides the GNU-as-like interface.
-
-### Supported output formats
-
-- **`binary`** — flat binary.
-- **`elf`** (default) — rejected unless `--format=binary` or `--format=ihex` is supplied.
-- **`ihex`** — Intel HEX (16-byte max data records, extended-linear-address records, correct checksums, `:00000001FF` EOF; 32-bit address space).
-- **`elf`** — **rejected** with explicit error message ("ELF object output is not implemented").
-
-### CLI option scope
-
-Non-default unimplemented flags are not registered with Commander and are unknown options. Public assembly validation gives descriptive errors for `--format=elf`.
+`bin.ts` (the CLI implementation) provides the GNU-as-like interface.
 
 Linker relaxation remains enabled by default and is unsupported, so `-mno-relax` is required. Architecture attributes and CSR checking are off by default; `--mno-arch-attr` and `--mno-csr-check` are accepted no-ops, while explicit `--march-attr` or `--mcsr-check` requests fail as unimplemented. Supported defaults `--mlittle-endian` and `--fno-pic` remain enabled as no-ops.
 
 ### CLI features
 
 - `-o, --output <objfile>` — default `a.out`; `-o -` writes to stdout
-- `--format <format>` — elf (default, error), binary, or ihex
-- `--base-address <address>` — flat-output origin (default `0`); does not pad the binary
+- `--march <ISA>` — set architecture (default: no restriction)
 - `--defsym <symbol=value>` — repeatable, defines a nonnegative integer absolute symbol
 - `--mno-relax` — required override for unsupported relaxation
 - `--mno-arch-attr` / `--mno-csr-check` — accepted no-op defaults
@@ -260,16 +361,16 @@ Linker relaxation remains enabled by default and is unsupported, so `-mno-relax`
 - `--target-help` — prints RISC-V target options and exits 0
 - `--version` / `-version` — prints version and exits 0
 - `--help` — prints help and exits 0
-- GNU one-dash normalization covers only supported forms such as `-mno-relax`, `-fno-pic`, and `-oFILE`
+- GNU one-dash normalization covers `-oFILE`, `-march=VALUE`, `-mno-relax`, `-fno-pic`, and `-version`
 
 ### Not supported (and loudly rejected or silently absent)
 
 - ELF, compression, `.include`, relocations, debug info, PIC, linker relaxation, FP/vector/CSR
-- `.file`, `.section`, `.globl`, `.type`, `.size`, `.align`, `.zero`, `.fill`, `.space`, `.string`, `.asciz` — no directives at all
+- `.file`, `.type`, `.size`, `.fill` — unsupported directives (rejected if encountered)
 
 ### CLI options vs public assembly validation
 
-Commander rejects unregistered options as unknown options. `validateCliOptions` requires `-mno-relax` and rejects explicit architecture-attribute or CSR-checking requests. Public `assemble` validates format, base address, and defsyms so library and CLI behavior agree. Internal `assembleFlat` remains intentionally permissive.
+Commander rejects unregistered options as unknown options. `validateCliOptions` requires `-mno-relax` and rejects explicit architecture-attribute or CSR-checking requests. Public `assemble` validates defsyms so library and CLI behavior agree.
 
 ## 9. Coding conventions
 
@@ -277,7 +378,7 @@ Commander rejects unregistered options as unknown options. `validateCliOptions` 
 
 - `strict: true` with `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `verbatimModuleSyntax` enabled.
 - **`type` aliases preferred** over `interface`.
-- **Required fields only** — no optional fields in metadata types.
+- **Required fields only** — no optional fields in metadata types. The single permitted exception is `numberPart.nonzero`: the zero-immediate constraint applies to only two mnemonics, so requiring the field everywhere would force meaningless `nonzero: false` declarations across the rest of the table.
 - **`any` is banned globally** — `typescript/no-explicit-any` is an error with no file exceptions.
 - **Export convention**: see section 4. This is a manual style preference, not machine-enforced.
 
@@ -327,10 +428,10 @@ Commander rejects unregistered options as unknown options. `validateCliOptions` 
 
 ### CLI tests
 
-- Use the `testIo()` helper to produce an in-memory `CliIo` bag.
-- Verify unregistered options fail as unknown options; ISA/ABI/format values retain descriptive errors.
+- CLI tests spawn the entry point as a subprocess via `npx tsx --conditions @risc-v-asm/source src/bin.ts ...` using the `runCli` helper defined in `src/bin.test.ts`, which injects `--mno-relax` automatically. The helper returns `{ exitCode, stdout, stderr, stdoutBytes }` so tests can assert on exit code, stderr text, and output bytes.
+- Verify unregistered options fail as unknown options.
 - Tests that create files use `tempDir()` (creates a unique temporary directory with `tmpdir()` and `mkdir`).
-- Test `--output -` (stdout), `--format=binary`, `--format=ihex`, `--defsym`, `--target-help`, and joined `-oFILE` forms.
+- Test `--output -` (stdout), `--defsym`, `--target-help`, and joined `-oFILE` forms.
 
 ### Regression tests
 

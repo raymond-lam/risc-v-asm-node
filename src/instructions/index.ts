@@ -15,5 +15,5 @@
  */
 
 export { default as INSTRUCTION_MAP } from '#instructions/instruction-map';
-export { resolveOperands } from '#instructions/operands';
+export { isRegisterText, resolveOperands, selectSignature } from '#instructions/operands';
 export type { InstructionSignature } from '#instructions/operands';

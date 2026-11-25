@@ -43,3 +43,29 @@ export const bytes16 = (value: number): Uint8Array => {
   bytes[1] = (value >>> 8) & 0xff;
   return bytes;
 };
+
+/**
+ * Serialize a nonnegative value into a 64-bit little-endian byte sequence.
+ * JavaScript numbers can represent at most 53-bit integers precisely, so the
+ * caller must ensure that the value fits within the safe integer range.
+ *
+ * @param value - Nonnegative integer to serialize.
+ * @returns An eight-byte little-endian `Uint8Array`.
+ */
+export const bytes64 = (value: number): Uint8Array => {
+  // JavaScript's >> operator masks the shift count to 5 bits (32-bit), so
+  // value >> 32 would equal value >> 0 for non-negative values.  Use
+  // integer division to obtain the upper 32 bits safely.
+  const low32 = value & 0xffff_ffff;
+  const high32 = Math.floor(value / 0x1_0000_0000) & 0xffff_ffff;
+  const bytes = new Uint8Array(8);
+  bytes[0] = low32 & 0xff;
+  bytes[1] = (low32 >>> 8) & 0xff;
+  bytes[2] = (low32 >>> 16) & 0xff;
+  bytes[3] = (low32 >>> 24) & 0xff;
+  bytes[4] = high32 & 0xff;
+  bytes[5] = (high32 >>> 8) & 0xff;
+  bytes[6] = (high32 >>> 16) & 0xff;
+  bytes[7] = (high32 >>> 24) & 0xff;
+  return bytes;
+};

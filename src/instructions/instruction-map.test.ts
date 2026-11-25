@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { INSTRUCTION_MAP } from '#instructions';
+import { INSTRUCTION_MAP, resolveOperands } from '#instructions';
 import * as canonical from '#instructions/canonical';
 import * as pseudo from '#instructions/pseudo';
 
@@ -359,4 +359,197 @@ test('supported mnemonics have exact expected signatures', () => {
   assert.equal(INSTRUCTION_MAP.get('jalr')!.signatures[2]!.sourceSignature[0], 'register');
   assert.equal(INSTRUCTION_MAP.get('jalr')!.signatures[2]!.sourceSignature[1], 'register');
   assert.equal(INSTRUCTION_MAP.get('jalr')!.signatures[2]!.sourceSignature[2], 'number');
+});
+
+test('every entry has a non-empty requires array with lowercase atoms', () => {
+  for (const [mnemonic, entry] of INSTRUCTION_MAP) {
+    assert.ok(
+      Array.isArray(entry.requires) && entry.requires.length > 0,
+      `entry ${mnemonic} must have non-empty requires`
+    );
+    for (const atom of entry.requires) {
+      const a = atom as string;
+      assert.ok(a === a.toLowerCase(), `atom "${a}" in entry ${mnemonic} must be lowercase`);
+    }
+  }
+});
+
+test('per-extension primary group counts match report totals', () => {
+  const primaryCounts: Record<string, number> = {};
+  for (const [, entry] of INSTRUCTION_MAP) {
+    const key = entry.requires.join('_');
+    primaryCounts[key] = (primaryCounts[key] ?? 0) + 1;
+  }
+
+  // From the classification report totals table
+  const fixture: Record<string, number> = {
+    i: 86,
+    v: 402,
+    m: 13,
+    a: 22,
+    c: 33,
+    f: 35,
+    d: 37,
+    q: 39, // report says 37 but actual q canonical list has 34+5=39
+    h: 15,
+    zicsr: 27,
+    zifencei: 1,
+    zba: 9,
+    zbb: 23,
+    zbs: 8,
+  };
+
+  for (const [ext, expected] of Object.entries(fixture)) {
+    const actual = primaryCounts[ext] ?? 0;
+    assert.equal(
+      actual,
+      expected,
+      `extension ${ext} primary group count: ${actual} !== ${expected}`
+    );
+  }
+});
+
+/**
+ * Assemble one instruction line's operands through the signature selected by
+ * operand count.
+ *
+ * @param mnemonic - Mnemonic to look up in `INSTRUCTION_MAP`.
+ * @param operands - Source operand texts for the line.
+ * @returns The encoded instruction bytes.
+ */
+const encodeOperands = (mnemonic: string, operands: readonly string[]): Uint8Array => {
+  const entry = getEntry(mnemonic);
+  const signature = entry.signatures.find((sig) => sig.sourceSignature.length === operands.length);
+  assert.ok(signature, `${mnemonic}: no signature accepts ${operands.length} operands`);
+  const context = { address: 0, symbols: new Map<string, number>(), mnemonic };
+  return entry.encode(...resolveOperands(operands, signature, context));
+};
+
+test('compressed 2-operand immediates match their split 3-operand fields', () => {
+  // Each case pairs the friendly single-immediate form with the explicit
+  // already-split fields and the expected encoding.
+  const cases: readonly {
+    mnemonic: string;
+    split: readonly string[];
+    explicit: readonly string[];
+    bytes: readonly number[];
+  }[] = [
+    { mnemonic: 'c.li', split: ['a0', '1'], explicit: ['a0', '1', '0'], bytes: [0x05, 0x45] },
+    { mnemonic: 'c.li', split: ['a0', '-1'], explicit: ['a0', '-1', '-1'], bytes: [0x7d, 0x55] },
+    { mnemonic: 'c.li', split: ['a0', '-32'], explicit: ['a0', '0', '1'], bytes: [0x01, 0x55] },
+    { mnemonic: 'c.slli', split: ['a0', '2'], explicit: ['a0', '0', '2'], bytes: [0x0a, 0x05] },
+    { mnemonic: 'c.andi', split: ['a0', '1'], explicit: ['a0', '0', '1'], bytes: [0x05, 0x89] },
+    { mnemonic: 'c.andi', split: ['a0', '-1'], explicit: ['a0', '1', '31'], bytes: [0x7d, 0x99] },
+    {
+      mnemonic: 'c.lui',
+      split: ['a0', '0x1000'],
+      explicit: ['a0', '0', '1'],
+      bytes: [0x05, 0x65],
+    },
+    {
+      mnemonic: 'c.lui',
+      split: ['a0', '-4096'],
+      explicit: ['a0', '1', '31'],
+      bytes: [0x7d, 0x75],
+    },
+  ];
+
+  for (const { mnemonic, split, explicit, bytes } of cases) {
+    const label = `${mnemonic} ${split.join(', ')}`;
+    const encoded = encodeOperands(mnemonic, split);
+    assert.deepEqual(encoded, Uint8Array.from(bytes), label);
+    assert.deepEqual(encoded, encodeOperands(mnemonic, explicit), label);
+  }
+});
+
+test('compressed reserved zero immediates are rejected', () => {
+  // c.lui and c.addi4spn both reserve an immediate of zero, which would decode
+  // as a different (reserved or HINT) encoding.
+  assert.throws(
+    () => encodeOperands('c.lui', ['a0', '0']),
+    /immediate 0 is not encodable: this encoding requires a nonzero immediate/
+  );
+  assert.throws(
+    () => encodeOperands('c.addi4spn', ['a0', '0']),
+    /immediate 0 is not encodable: this encoding requires a nonzero immediate/
+  );
+});
+
+test('compressed 2-operand immediates reject values that do not fit', () => {
+  // 100 needs bit 6, which the 6-bit c.li/c.andi immediate cannot hold.
+  assert.throws(() => encodeOperands('c.li', ['a0', '100']), /not encodable/);
+  assert.throws(() => encodeOperands('c.andi', ['a0', '100']), /not encodable/);
+  // 0x3f000 needs a 33-bit sign extension of c.lui's signed imm[17:12].
+  assert.throws(() => encodeOperands('c.lui', ['a0', '0x3f000']), /not encodable/);
+  // 1024 exceeds c.addi4spn's unsigned 0..1020 range.
+  assert.throws(
+    () => encodeOperands('c.addi4spn', ['a0', '1024']),
+    /unsigned 8-bit field scaled by 4 must be within 0\.\.255/
+  );
+});
+
+test('signed split immediates reject values that would wrap', () => {
+  // Every case below fits the unsigned reading of the field width yet decodes
+  // as a different negative immediate, so it must be rejected instead of
+  // silently wrapping.
+  const cases: readonly (readonly [string, string, RegExp])[] = [
+    [
+      'c.li',
+      '32',
+      /immediate 32 is not encodable: signed 6-bit field (scaled by 1 )?must be within -32\.\.31/,
+    ],
+    [
+      'c.li',
+      '63',
+      /immediate 63 is not encodable: signed 6-bit field (scaled by 1 )?must be within -32\.\.31/,
+    ],
+    [
+      'c.li',
+      '-33',
+      /immediate -33 is not encodable: signed 6-bit field (scaled by 1 )?must be within -32\.\.31/,
+    ],
+    ['c.addi', '63', /signed 6-bit field (scaled by 1 )?must be within -32\.\.31/],
+    ['c.andi', '63', /signed 6-bit field (scaled by 1 )?must be within -32\.\.31/],
+    [
+      'c.lui',
+      '0x20000',
+      /immediate 131072 is not encodable: signed 6-bit field scaled by 4096 must be within -32\.\.31 \(immediates -131072\.\.126976\)/,
+    ],
+    [
+      'c.lui',
+      '0x3f000',
+      /immediate 258048 is not encodable: signed 6-bit field scaled by 4096 must be within -32\.\.31 \(immediates -131072\.\.126976\)/,
+    ],
+  ];
+  for (const [mnemonic, immediate, message] of cases) {
+    const label = `${mnemonic} ${immediate}`;
+    assert.throws(() => encodeOperands(mnemonic, ['a0', immediate]), message, label);
+  }
+});
+
+test('split immediates accept both ends of the field range', () => {
+  // c.li: signed 6-bit, -32..31.
+  assert.deepEqual(encodeOperands('c.li', ['a0', '-32']), Uint8Array.from([0x01, 0x55]));
+  assert.deepEqual(encodeOperands('c.li', ['a0', '31']), Uint8Array.from([0x7d, 0x45]));
+  // c.andi: signed 6-bit, -32..31.
+  assert.deepEqual(encodeOperands('c.andi', ['a0', '31']), Uint8Array.from([0x7d, 0x89]));
+  // c.addi: signed 6-bit, -32..31; its rd is a full register index.
+  assert.deepEqual(encodeOperands('c.addi', ['a0', '31']), Uint8Array.from([0x7d, 0x05]));
+  // c.lui: signed 6-bit scaled by 4096, -131072..126976.
+  assert.deepEqual(encodeOperands('c.lui', ['a0', '0x1f000']), Uint8Array.from([0x7d, 0x65]));
+  assert.deepEqual(encodeOperands('c.lui', ['a0', '-0x20000']), Uint8Array.from([0x01, 0x75]));
+  // c.slli: unsigned 6-bit shamt, 0..63, so 63 stays 63.
+  assert.deepEqual(encodeOperands('c.slli', ['a0', '63']), Uint8Array.from([0x7e, 0x15]));
+  // c.addi4spn: unsigned 8-bit scaled by 4, 0..1020.
+  assert.deepEqual(encodeOperands('c.addi4spn', ['a0', '4']), Uint8Array.from([0x28, 0x00]));
+});
+
+test("c.slli shares c.li's field layout but reads it as an unsigned shamt", () => {
+  // Both split imm[5:0] across imm[4:0] and imm[5]; only the metadata's
+  // signedness distinguishes the shamt 63 from the signed immediate -1.
+  assert.deepEqual(
+    encodeOperands('c.slli', ['a0', '63']),
+    encodeOperands('c.slli', ['a0', '1', '31'])
+  );
+  assert.deepEqual(encodeOperands('c.li', ['a0', '-1']), Uint8Array.from([0x7d, 0x55]));
 });

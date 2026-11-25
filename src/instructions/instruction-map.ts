@@ -17,6 +17,8 @@
 import * as canonical from '#instructions/canonical';
 import type { InstructionSignature } from '#instructions/operands';
 import * as pseudo from '#instructions/pseudo';
+import * as relocations from '#relocations';
+
 // Exact signatures are authoritative for flat-supported mnemonics.
 // Unsupported entries use mechanical field-level metadata derived from encoder
 // parameter names.  Register parameters start with rd/rs/rt/frd/frs/fs1/fs2/fd/vd/vs;
@@ -25,6 +27,7 @@ import * as pseudo from '#instructions/pseudo';
 const INSTRUCTION_MAP: ReadonlyMap<
   string,
   Readonly<{
+    readonly requires: readonly string[];
     readonly encode: (...args: number[]) => Uint8Array;
     readonly instructionLength: number | ((rd: number, value: number | bigint) => number);
     readonly signatures: readonly InstructionSignature[];
@@ -33,6 +36,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lr.d',
     {
+      requires: ['a'],
       encode: canonical.encodeLrD,
       instructionLength: 4,
       signatures: [
@@ -51,6 +55,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sc.d',
     {
+      requires: ['a'],
       encode: canonical.encodeScD,
       instructionLength: 4,
       signatures: [
@@ -70,6 +75,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoswap.d',
     {
+      requires: ['a'],
       encode: canonical.encodeAmoswapD,
       instructionLength: 4,
       signatures: [
@@ -89,6 +95,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoadd.d',
     {
+      requires: ['a'],
       encode: canonical.encodeAmoaddD,
       instructionLength: 4,
       signatures: [
@@ -108,6 +115,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoxor.d',
     {
+      requires: ['a'],
       encode: canonical.encodeAmoxorD,
       instructionLength: 4,
       signatures: [
@@ -127,6 +135,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoand.d',
     {
+      requires: ['a'],
       encode: canonical.encodeAmoandD,
       instructionLength: 4,
       signatures: [
@@ -146,6 +155,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoor.d',
     {
+      requires: ['a'],
       encode: canonical.encodeAmoorD,
       instructionLength: 4,
       signatures: [
@@ -165,6 +175,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomin.d',
     {
+      requires: ['a'],
       encode: canonical.encodeAmominD,
       instructionLength: 4,
       signatures: [
@@ -184,6 +195,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomax.d',
     {
+      requires: ['a'],
       encode: canonical.encodeAmomaxD,
       instructionLength: 4,
       signatures: [
@@ -203,6 +215,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amominu.d',
     {
+      requires: ['a'],
       encode: canonical.encodeAmominuD,
       instructionLength: 4,
       signatures: [
@@ -222,6 +235,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomaxu.d',
     {
+      requires: ['a'],
       encode: canonical.encodeAmomaxuD,
       instructionLength: 4,
       signatures: [
@@ -241,6 +255,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.ld',
     {
+      requires: ['c'],
       encode: canonical.encodeCLd,
       instructionLength: 2,
       signatures: [
@@ -253,12 +268,22 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 3 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            { type: 'address', sourceOperand: 1, addressPart: 'base', relative: false },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetLoDouble', relative: false },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetHiDouble', relative: false },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.sd',
     {
+      requires: ['c'],
       encode: canonical.encodeCSd,
       instructionLength: 2,
       signatures: [
@@ -271,12 +296,22 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 3 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'address', sourceOperand: 1, addressPart: 'base', relative: false },
+            { type: 'register', sourceOperand: 0 },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetHiDouble', relative: false },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetLoDouble', relative: false },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.addiw',
     {
+      requires: ['c'],
       encode: canonical.encodeCAddiw,
       instructionLength: 2,
       signatures: [
@@ -288,12 +323,31 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'number'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [0, 4] as const,
+              signed: true,
+            },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [5, 5] as const,
+              signed: true,
+            },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.srli',
     {
+      requires: ['c'],
       encode: canonical.encodeCSrli,
       instructionLength: 2,
       signatures: [
@@ -305,12 +359,31 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'number'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [0, 4] as const,
+              signed: false,
+            },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [5, 5] as const,
+              signed: false,
+            },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.srai',
     {
+      requires: ['c'],
       encode: canonical.encodeCSrai,
       instructionLength: 2,
       signatures: [
@@ -322,12 +395,31 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'number'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [0, 4] as const,
+              signed: false,
+            },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [5, 5] as const,
+              signed: false,
+            },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.subw',
     {
+      requires: ['c'],
       encode: canonical.encodeCSubw,
       instructionLength: 2,
       signatures: [
@@ -344,6 +436,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.addw',
     {
+      requires: ['c'],
       encode: canonical.encodeCAddw,
       instructionLength: 2,
       signatures: [
@@ -360,6 +453,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.slli',
     {
+      requires: ['c'],
       encode: canonical.encodeCSlli,
       instructionLength: 2,
       signatures: [
@@ -371,12 +465,31 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'number'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [5, 5] as const,
+              signed: false,
+            },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [0, 4] as const,
+              signed: false,
+            },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.ldsp',
     {
+      requires: ['c'],
       encode: canonical.encodeCLdsp,
       instructionLength: 2,
       signatures: [
@@ -388,12 +501,31 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            {
+              type: 'address',
+              sourceOperand: 1,
+              addressPart: 'cOffsetSpDoubleHi',
+              relative: false,
+            },
+            {
+              type: 'address',
+              sourceOperand: 1,
+              addressPart: 'cOffsetSpDoubleLo',
+              relative: false,
+            },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.sdsp',
     {
+      requires: ['c'],
       encode: canonical.encodeCSdsp,
       instructionLength: 2,
       signatures: [
@@ -404,12 +536,20 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 1 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetSpDouble', relative: false },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'fcvt.l.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFcvtLD,
       instructionLength: 4,
       signatures: [
@@ -427,6 +567,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.lu.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFcvtLuD,
       instructionLength: 4,
       signatures: [
@@ -444,6 +585,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmv.x.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFmvXD,
       instructionLength: 4,
       signatures: [
@@ -460,6 +602,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.d.l',
     {
+      requires: ['d'],
       encode: canonical.encodeFcvtDL,
       instructionLength: 4,
       signatures: [
@@ -477,6 +620,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.d.lu',
     {
+      requires: ['d'],
       encode: canonical.encodeFcvtDLu,
       instructionLength: 4,
       signatures: [
@@ -494,6 +638,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmv.d.x',
     {
+      requires: ['d'],
       encode: canonical.encodeFmvDX,
       instructionLength: 4,
       signatures: [
@@ -510,6 +655,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.l.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFcvtLS,
       instructionLength: 4,
       signatures: [
@@ -527,6 +673,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.lu.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFcvtLuS,
       instructionLength: 4,
       signatures: [
@@ -544,6 +691,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.s.l',
     {
+      requires: ['f'],
       encode: canonical.encodeFcvtSL,
       instructionLength: 4,
       signatures: [
@@ -561,6 +709,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.s.lu',
     {
+      requires: ['f'],
       encode: canonical.encodeFcvtSLu,
       instructionLength: 4,
       signatures: [
@@ -578,6 +727,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hlv.wu',
     {
+      requires: ['h'],
       encode: canonical.encodeHlvWu,
       instructionLength: 4,
       signatures: [
@@ -594,6 +744,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hlv.d',
     {
+      requires: ['h'],
       encode: canonical.encodeHlvD,
       instructionLength: 4,
       signatures: [
@@ -610,6 +761,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hsv.d',
     {
+      requires: ['h'],
       encode: canonical.encodeHsvD,
       instructionLength: 4,
       signatures: [
@@ -626,6 +778,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lwu',
     {
+      requires: ['i'],
       encode: canonical.encodeLwu,
       instructionLength: 4,
       signatures: [
@@ -643,6 +796,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ld',
     {
+      requires: ['i'],
       encode: canonical.encodeLd,
       instructionLength: 4,
       signatures: [
@@ -660,6 +814,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sd',
     {
+      requires: ['i'],
       encode: canonical.encodeSd,
       instructionLength: 4,
       signatures: [
@@ -678,6 +833,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'slli',
     {
+      requires: ['i'],
       encode: canonical.encodeSlli,
       instructionLength: 4,
       signatures: [
@@ -695,6 +851,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'srli',
     {
+      requires: ['i'],
       encode: canonical.encodeSrli,
       instructionLength: 4,
       signatures: [
@@ -712,6 +869,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'srai',
     {
+      requires: ['i'],
       encode: canonical.encodeSrai,
       instructionLength: 4,
       signatures: [
@@ -729,6 +887,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'addiw',
     {
+      requires: ['i'],
       encode: canonical.encodeAddiw,
       instructionLength: 4,
       signatures: [
@@ -746,6 +905,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'slliw',
     {
+      requires: ['i'],
       encode: canonical.encodeSlliw,
       instructionLength: 4,
       signatures: [
@@ -763,6 +923,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'srliw',
     {
+      requires: ['i'],
       encode: canonical.encodeSrliw,
       instructionLength: 4,
       signatures: [
@@ -780,6 +941,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sraiw',
     {
+      requires: ['i'],
       encode: canonical.encodeSraiw,
       instructionLength: 4,
       signatures: [
@@ -797,6 +959,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'addw',
     {
+      requires: ['i'],
       encode: canonical.encodeAddw,
       instructionLength: 4,
       signatures: [
@@ -814,6 +977,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'subw',
     {
+      requires: ['i'],
       encode: canonical.encodeSubw,
       instructionLength: 4,
       signatures: [
@@ -831,6 +995,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sllw',
     {
+      requires: ['i'],
       encode: canonical.encodeSllw,
       instructionLength: 4,
       signatures: [
@@ -848,6 +1013,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'srlw',
     {
+      requires: ['i'],
       encode: canonical.encodeSrlw,
       instructionLength: 4,
       signatures: [
@@ -865,6 +1031,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sraw',
     {
+      requires: ['i'],
       encode: canonical.encodeSraw,
       instructionLength: 4,
       signatures: [
@@ -882,6 +1049,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'mulw',
     {
+      requires: ['m'],
       encode: canonical.encodeMulw,
       instructionLength: 4,
       signatures: [
@@ -899,6 +1067,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'divw',
     {
+      requires: ['m'],
       encode: canonical.encodeDivw,
       instructionLength: 4,
       signatures: [
@@ -916,6 +1085,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'divuw',
     {
+      requires: ['m'],
       encode: canonical.encodeDivuw,
       instructionLength: 4,
       signatures: [
@@ -933,6 +1103,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'remw',
     {
+      requires: ['m'],
       encode: canonical.encodeRemw,
       instructionLength: 4,
       signatures: [
@@ -950,6 +1121,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'remuw',
     {
+      requires: ['m'],
       encode: canonical.encodeRemuw,
       instructionLength: 4,
       signatures: [
@@ -967,6 +1139,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.l.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtLQ,
       instructionLength: 4,
       signatures: [
@@ -984,6 +1157,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.lu.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtLuQ,
       instructionLength: 4,
       signatures: [
@@ -1001,6 +1175,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.q.l',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtQL,
       instructionLength: 4,
       signatures: [
@@ -1018,6 +1193,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.q.lu',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtQLu,
       instructionLength: 4,
       signatures: [
@@ -1035,6 +1211,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmvh.x.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFmvhXQ,
       instructionLength: 4,
       signatures: [
@@ -1051,6 +1228,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmvp.q.x',
     {
+      requires: ['q'],
       encode: canonical.encodeFmvpQX,
       instructionLength: 4,
       signatures: [
@@ -1068,6 +1246,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amocas.q',
     {
+      requires: ['zacas'],
       encode: canonical.encodeAmocasQ,
       instructionLength: 4,
       signatures: [
@@ -1087,6 +1266,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'add.uw',
     {
+      requires: ['zba'],
       encode: canonical.encodeAddUw,
       instructionLength: 4,
       signatures: [
@@ -1104,6 +1284,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sh1add.uw',
     {
+      requires: ['zba'],
       encode: canonical.encodeSh1addUw,
       instructionLength: 4,
       signatures: [
@@ -1121,6 +1302,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sh2add.uw',
     {
+      requires: ['zba'],
       encode: canonical.encodeSh2addUw,
       instructionLength: 4,
       signatures: [
@@ -1138,6 +1320,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sh3add.uw',
     {
+      requires: ['zba'],
       encode: canonical.encodeSh3addUw,
       instructionLength: 4,
       signatures: [
@@ -1155,6 +1338,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'slli.uw',
     {
+      requires: ['zba'],
       encode: canonical.encodeSlliUw,
       instructionLength: 4,
       signatures: [
@@ -1172,6 +1356,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'clzw',
     {
+      requires: ['zbb'],
       encode: canonical.encodeClzw,
       instructionLength: 4,
       signatures: [
@@ -1188,6 +1373,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ctzw',
     {
+      requires: ['zbb'],
       encode: canonical.encodeCtzw,
       instructionLength: 4,
       signatures: [
@@ -1204,6 +1390,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cpopw',
     {
+      requires: ['zbb'],
       encode: canonical.encodeCpopw,
       instructionLength: 4,
       signatures: [
@@ -1220,6 +1407,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rolw',
     {
+      requires: ['zbb'],
       encode: canonical.encodeRolw,
       instructionLength: 4,
       signatures: [
@@ -1237,6 +1425,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rorw',
     {
+      requires: ['zbb'],
       encode: canonical.encodeRorw,
       instructionLength: 4,
       signatures: [
@@ -1254,6 +1443,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'roriw',
     {
+      requires: ['zbb'],
       encode: canonical.encodeRoriw,
       instructionLength: 4,
       signatures: [
@@ -1271,6 +1461,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rori',
     {
+      requires: ['zbb'],
       encode: canonical.encodeRori,
       instructionLength: 4,
       signatures: [
@@ -1288,6 +1479,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rev8',
     {
+      requires: ['zbb'],
       encode: canonical.encodeRev8,
       instructionLength: 4,
       signatures: [
@@ -1304,6 +1496,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'packw',
     {
+      requires: ['zbkb'],
       encode: canonical.encodePackw,
       instructionLength: 4,
       signatures: [
@@ -1321,6 +1514,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bclri',
     {
+      requires: ['zbs'],
       encode: canonical.encodeBclri,
       instructionLength: 4,
       signatures: [
@@ -1338,6 +1532,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bexti',
     {
+      requires: ['zbs'],
       encode: canonical.encodeBexti,
       instructionLength: 4,
       signatures: [
@@ -1355,6 +1550,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'binvi',
     {
+      requires: ['zbs'],
       encode: canonical.encodeBinvi,
       instructionLength: 4,
       signatures: [
@@ -1372,6 +1568,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bseti',
     {
+      requires: ['zbs'],
       encode: canonical.encodeBseti,
       instructionLength: 4,
       signatures: [
@@ -1389,6 +1586,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.zext.w',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCZextW,
       instructionLength: 2,
       signatures: [
@@ -1402,6 +1600,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.l.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFcvtLH,
       instructionLength: 4,
       signatures: [
@@ -1419,6 +1618,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.lu.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFcvtLuH,
       instructionLength: 4,
       signatures: [
@@ -1436,6 +1636,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.h.l',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFcvtHL,
       instructionLength: 4,
       signatures: [
@@ -1453,6 +1654,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.h.lu',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFcvtHLu,
       instructionLength: 4,
       signatures: [
@@ -1470,6 +1672,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'aes64dsm',
     {
+      requires: ['zknd'],
       encode: canonical.encodeAes64dsm,
       instructionLength: 4,
       signatures: [
@@ -1487,6 +1690,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'aes64ds',
     {
+      requires: ['zknd'],
       encode: canonical.encodeAes64ds,
       instructionLength: 4,
       signatures: [
@@ -1504,6 +1708,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'aes64ks1i',
     {
+      requires: ['zknd'],
       encode: canonical.encodeAes64ks1i,
       instructionLength: 4,
       signatures: [
@@ -1521,6 +1726,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'aes64im',
     {
+      requires: ['zknd'],
       encode: canonical.encodeAes64im,
       instructionLength: 4,
       signatures: [
@@ -1537,6 +1743,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'aes64ks2',
     {
+      requires: ['zknd'],
       encode: canonical.encodeAes64ks2,
       instructionLength: 4,
       signatures: [
@@ -1554,6 +1761,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'aes64esm',
     {
+      requires: ['zkne'],
       encode: canonical.encodeAes64esm,
       instructionLength: 4,
       signatures: [
@@ -1571,6 +1779,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'aes64es',
     {
+      requires: ['zkne'],
       encode: canonical.encodeAes64es,
       instructionLength: 4,
       signatures: [
@@ -1588,6 +1797,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sha512sum0',
     {
+      requires: ['zknh'],
       encode: canonical.encodeSha512sum0,
       instructionLength: 4,
       signatures: [
@@ -1604,6 +1814,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sha512sum1',
     {
+      requires: ['zknh'],
       encode: canonical.encodeSha512sum1,
       instructionLength: 4,
       signatures: [
@@ -1620,6 +1831,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sha512sig0',
     {
+      requires: ['zknh'],
       encode: canonical.encodeSha512sig0,
       instructionLength: 4,
       signatures: [
@@ -1636,6 +1848,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sha512sig1',
     {
+      requires: ['zknh'],
       encode: canonical.encodeSha512sig1,
       instructionLength: 4,
       signatures: [
@@ -1652,6 +1865,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lr.w',
     {
+      requires: ['a'],
       encode: canonical.encodeLrW,
       instructionLength: 4,
       signatures: [
@@ -1670,6 +1884,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sc.w',
     {
+      requires: ['a'],
       encode: canonical.encodeScW,
       instructionLength: 4,
       signatures: [
@@ -1689,6 +1904,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoswap.w',
     {
+      requires: ['a'],
       encode: canonical.encodeAmoswapW,
       instructionLength: 4,
       signatures: [
@@ -1708,6 +1924,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoadd.w',
     {
+      requires: ['a'],
       encode: canonical.encodeAmoaddW,
       instructionLength: 4,
       signatures: [
@@ -1727,6 +1944,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoxor.w',
     {
+      requires: ['a'],
       encode: canonical.encodeAmoxorW,
       instructionLength: 4,
       signatures: [
@@ -1746,6 +1964,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoand.w',
     {
+      requires: ['a'],
       encode: canonical.encodeAmoandW,
       instructionLength: 4,
       signatures: [
@@ -1765,6 +1984,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoor.w',
     {
+      requires: ['a'],
       encode: canonical.encodeAmoorW,
       instructionLength: 4,
       signatures: [
@@ -1784,6 +2004,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomin.w',
     {
+      requires: ['a'],
       encode: canonical.encodeAmominW,
       instructionLength: 4,
       signatures: [
@@ -1803,6 +2024,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomax.w',
     {
+      requires: ['a'],
       encode: canonical.encodeAmomaxW,
       instructionLength: 4,
       signatures: [
@@ -1822,6 +2044,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amominu.w',
     {
+      requires: ['a'],
       encode: canonical.encodeAmominuW,
       instructionLength: 4,
       signatures: [
@@ -1841,6 +2064,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomaxu.w',
     {
+      requires: ['a'],
       encode: canonical.encodeAmomaxuW,
       instructionLength: 4,
       signatures: [
@@ -1860,6 +2084,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.addi4spn',
     {
+      requires: ['c'],
       encode: canonical.encodeCAddi4spn,
       instructionLength: 2,
       signatures: [
@@ -1867,7 +2092,13 @@ const INSTRUCTION_MAP: ReadonlyMap<
           sourceSignature: ['register', 'number'] as const,
           encoderSignature: [
             { type: 'register', sourceOperand: 0 },
-            { type: 'number', sourceOperand: 1 },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [2, 9] as const,
+              signed: false,
+              nonzero: true,
+            },
           ] as const,
         },
       ],
@@ -1876,6 +2107,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.lw',
     {
+      requires: ['c'],
       encode: canonical.encodeCLw,
       instructionLength: 2,
       signatures: [
@@ -1888,12 +2120,22 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 3 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            { type: 'address', sourceOperand: 1, addressPart: 'base', relative: false },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetLoWord', relative: false },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetHiWord', relative: false },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.sw',
     {
+      requires: ['c'],
       encode: canonical.encodeCSw,
       instructionLength: 2,
       signatures: [
@@ -1906,15 +2148,32 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 3 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'address', sourceOperand: 1, addressPart: 'base', relative: false },
+            { type: 'register', sourceOperand: 0 },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetLoWord', relative: false },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetHiWord', relative: false },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.nop',
     {
+      requires: ['c'],
       encode: canonical.encodeCNop,
       instructionLength: 2,
       signatures: [
+        {
+          sourceSignature: [] as const,
+          encoderSignature: [
+            { type: 'constant', value: 0 },
+            { type: 'constant', value: 0 },
+          ] as const,
+        },
         {
           sourceSignature: ['number', 'number'] as const,
           encoderSignature: [
@@ -1928,6 +2187,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.addi',
     {
+      requires: ['c'],
       encode: canonical.encodeCAddi,
       instructionLength: 2,
       signatures: [
@@ -1939,12 +2199,31 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'number'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [0, 4] as const,
+              signed: true,
+            },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [5, 5] as const,
+              signed: true,
+            },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.li',
     {
+      requires: ['c'],
       encode: canonical.encodeCLi,
       instructionLength: 2,
       signatures: [
@@ -1956,12 +2235,31 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'number'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [0, 4] as const,
+              signed: true,
+            },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [5, 5] as const,
+              signed: true,
+            },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.addi16sp',
     {
+      requires: ['c'],
       encode: canonical.encodeCAddi16sp,
       instructionLength: 2,
       signatures: [
@@ -1972,12 +2270,20 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 1 },
           ] as const,
         },
+        {
+          sourceSignature: ['number'] as const,
+          encoderSignature: [
+            { type: 'address', sourceOperand: 0, addressPart: 'cStackAdjustHi', relative: false },
+            { type: 'address', sourceOperand: 0, addressPart: 'cStackAdjustLo', relative: false },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.lui',
     {
+      requires: ['c'],
       encode: canonical.encodeCLui,
       instructionLength: 2,
       signatures: [
@@ -1989,12 +2295,33 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'number'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [17, 17] as const,
+              signed: true,
+              nonzero: true,
+            },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [12, 16] as const,
+              signed: true,
+              nonzero: true,
+            },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.andi',
     {
+      requires: ['c'],
       encode: canonical.encodeCAndi,
       instructionLength: 2,
       signatures: [
@@ -2006,12 +2333,31 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'number'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [5, 5] as const,
+              signed: true,
+            },
+            {
+              type: 'numberPart',
+              sourceOperand: 1,
+              bits: [0, 4] as const,
+              signed: true,
+            },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.sub',
     {
+      requires: ['c'],
       encode: canonical.encodeCSub,
       instructionLength: 2,
       signatures: [
@@ -2028,6 +2374,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.xor',
     {
+      requires: ['c'],
       encode: canonical.encodeCXor,
       instructionLength: 2,
       signatures: [
@@ -2044,6 +2391,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.or',
     {
+      requires: ['c'],
       encode: canonical.encodeCOr,
       instructionLength: 2,
       signatures: [
@@ -2060,6 +2408,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.and',
     {
+      requires: ['c'],
       encode: canonical.encodeCAnd,
       instructionLength: 2,
       signatures: [
@@ -2076,6 +2425,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.j',
     {
+      requires: ['c'],
       encode: canonical.encodeCJ,
       instructionLength: 2,
       signatures: [
@@ -2089,6 +2439,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.beqz',
     {
+      requires: ['c'],
       encode: canonical.encodeCBeqz,
       instructionLength: 2,
       signatures: [
@@ -2100,12 +2451,22 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            // encodeCBeqz takes the scattered offset fields low then high.
+            { type: 'address', sourceOperand: 1, addressPart: 'cBranchOffsetLow', relative: true },
+            { type: 'address', sourceOperand: 1, addressPart: 'cBranchOffsetHigh', relative: true },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.bnez',
     {
+      requires: ['c'],
       encode: canonical.encodeCBnez,
       instructionLength: 2,
       signatures: [
@@ -2117,12 +2478,22 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            // encodeCBnez takes the scattered offset fields low then high.
+            { type: 'address', sourceOperand: 1, addressPart: 'cBranchOffsetLow', relative: true },
+            { type: 'address', sourceOperand: 1, addressPart: 'cBranchOffsetHigh', relative: true },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.lwsp',
     {
+      requires: ['c'],
       encode: canonical.encodeCLwsp,
       instructionLength: 2,
       signatures: [
@@ -2134,12 +2505,21 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetSpWordHi', relative: false },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetSpWordLo', relative: false },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.jr',
     {
+      requires: ['c'],
       encode: canonical.encodeCJr,
       instructionLength: 2,
       signatures: [
@@ -2153,6 +2533,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.mv',
     {
+      requires: ['c'],
       encode: canonical.encodeCMv,
       instructionLength: 2,
       signatures: [
@@ -2169,6 +2550,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.ebreak',
     {
+      requires: ['c'],
       encode: canonical.encodeCEbreak,
       instructionLength: 2,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -2177,12 +2559,13 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.jalr',
     {
+      requires: ['c'],
       encode: canonical.encodeCJalr,
       instructionLength: 2,
       signatures: [
         {
-          sourceSignature: ['number'] as const,
-          encoderSignature: [{ type: 'number', sourceOperand: 0 }] as const,
+          sourceSignature: ['register'] as const,
+          encoderSignature: [{ type: 'register', sourceOperand: 0 }] as const,
         },
       ],
     },
@@ -2190,6 +2573,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.add',
     {
+      requires: ['c'],
       encode: canonical.encodeCAdd,
       instructionLength: 2,
       signatures: [
@@ -2206,6 +2590,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.swsp',
     {
+      requires: ['c'],
       encode: canonical.encodeCSwsp,
       instructionLength: 2,
       signatures: [
@@ -2216,12 +2601,20 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 1 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetSpWord', relative: false },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.fld',
     {
+      requires: ['d', 'c'],
       encode: canonical.encodeCFld,
       instructionLength: 2,
       signatures: [
@@ -2234,12 +2627,22 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 3 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            { type: 'address', sourceOperand: 1, addressPart: 'base', relative: false },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetLoDouble', relative: false },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetHiDouble', relative: false },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.fsd',
     {
+      requires: ['d', 'c'],
       encode: canonical.encodeCFsd,
       instructionLength: 2,
       signatures: [
@@ -2252,12 +2655,23 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 3 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'address', sourceOperand: 1, addressPart: 'base', relative: false },
+            { type: 'register', sourceOperand: 0 },
+            // encodeCFsd takes the offset fields low then high, unlike encodeCSd.
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetLoDouble', relative: false },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetHiDouble', relative: false },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.fldsp',
     {
+      requires: ['d', 'c'],
       encode: canonical.encodeCFldsp,
       instructionLength: 2,
       signatures: [
@@ -2269,12 +2683,31 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            {
+              type: 'address',
+              sourceOperand: 1,
+              addressPart: 'cOffsetSpDoubleHi',
+              relative: false,
+            },
+            {
+              type: 'address',
+              sourceOperand: 1,
+              addressPart: 'cOffsetSpDoubleLo',
+              relative: false,
+            },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'c.fsdsp',
     {
+      requires: ['d', 'c'],
       encode: canonical.encodeCFsdsp,
       instructionLength: 2,
       signatures: [
@@ -2285,12 +2718,20 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 1 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            { type: 'address', sourceOperand: 1, addressPart: 'cOffsetSpDouble', relative: false },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'fld',
     {
+      requires: ['d'],
       encode: canonical.encodeFld,
       instructionLength: 4,
       signatures: [
@@ -2308,6 +2749,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsd',
     {
+      requires: ['d'],
       encode: canonical.encodeFsd,
       instructionLength: 4,
       signatures: [
@@ -2326,6 +2768,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmadd.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFmaddD,
       instructionLength: 4,
       signatures: [
@@ -2345,6 +2788,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmsub.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFmsubD,
       instructionLength: 4,
       signatures: [
@@ -2364,6 +2808,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fnmsub.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFnmsubD,
       instructionLength: 4,
       signatures: [
@@ -2383,6 +2828,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fnmadd.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFnmaddD,
       instructionLength: 4,
       signatures: [
@@ -2402,6 +2848,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fadd.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFaddD,
       instructionLength: 4,
       signatures: [
@@ -2420,6 +2867,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsub.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFsubD,
       instructionLength: 4,
       signatures: [
@@ -2438,6 +2886,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmul.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFmulD,
       instructionLength: 4,
       signatures: [
@@ -2456,6 +2905,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fdiv.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFdivD,
       instructionLength: 4,
       signatures: [
@@ -2474,6 +2924,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsqrt.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFsqrtD,
       instructionLength: 4,
       signatures: [
@@ -2491,6 +2942,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnj.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFsgnjD,
       instructionLength: 4,
       signatures: [
@@ -2508,6 +2960,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnjn.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFsgnjnD,
       instructionLength: 4,
       signatures: [
@@ -2525,6 +2978,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnjx.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFsgnjxD,
       instructionLength: 4,
       signatures: [
@@ -2542,6 +2996,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmin.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFminD,
       instructionLength: 4,
       signatures: [
@@ -2559,6 +3014,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmax.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFmaxD,
       instructionLength: 4,
       signatures: [
@@ -2576,6 +3032,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.s.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFcvtSD,
       instructionLength: 4,
       signatures: [
@@ -2593,6 +3050,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.d.s',
     {
+      requires: ['d'],
       encode: canonical.encodeFcvtDS,
       instructionLength: 4,
       signatures: [
@@ -2610,6 +3068,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'feq.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFeqD,
       instructionLength: 4,
       signatures: [
@@ -2627,6 +3086,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'flt.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFltD,
       instructionLength: 4,
       signatures: [
@@ -2644,6 +3104,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fle.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFleD,
       instructionLength: 4,
       signatures: [
@@ -2661,6 +3122,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fclass.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFclassD,
       instructionLength: 4,
       signatures: [
@@ -2677,6 +3139,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.w.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFcvtWD,
       instructionLength: 4,
       signatures: [
@@ -2694,6 +3157,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.wu.d',
     {
+      requires: ['d'],
       encode: canonical.encodeFcvtWuD,
       instructionLength: 4,
       signatures: [
@@ -2711,6 +3175,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.d.w',
     {
+      requires: ['d'],
       encode: canonical.encodeFcvtDW,
       instructionLength: 4,
       signatures: [
@@ -2728,6 +3193,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.d.wu',
     {
+      requires: ['d'],
       encode: canonical.encodeFcvtDWu,
       instructionLength: 4,
       signatures: [
@@ -2745,6 +3211,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fli.d',
     {
+      requires: ['d', 'zfa'],
       encode: canonical.encodeFliD,
       instructionLength: 4,
       signatures: [
@@ -2761,6 +3228,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fminm.d',
     {
+      requires: ['d', 'zfa'],
       encode: canonical.encodeFminmD,
       instructionLength: 4,
       signatures: [
@@ -2778,6 +3246,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmaxm.d',
     {
+      requires: ['d', 'zfa'],
       encode: canonical.encodeFmaxmD,
       instructionLength: 4,
       signatures: [
@@ -2795,6 +3264,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fround.d',
     {
+      requires: ['d', 'zfa'],
       encode: canonical.encodeFroundD,
       instructionLength: 4,
       signatures: [
@@ -2812,6 +3282,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'froundnx.d',
     {
+      requires: ['d', 'zfa'],
       encode: canonical.encodeFroundnxD,
       instructionLength: 4,
       signatures: [
@@ -2829,6 +3300,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvtmod.w.d',
     {
+      requires: ['d', 'zfa'],
       encode: canonical.encodeFcvtmodWD,
       instructionLength: 4,
       signatures: [
@@ -2845,6 +3317,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fleq.d',
     {
+      requires: ['d', 'zfa'],
       encode: canonical.encodeFleqD,
       instructionLength: 4,
       signatures: [
@@ -2862,6 +3335,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fltq.d',
     {
+      requires: ['d', 'zfa'],
       encode: canonical.encodeFltqD,
       instructionLength: 4,
       signatures: [
@@ -2879,6 +3353,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.d.h',
     {
+      requires: ['d', 'zfhmin'],
       encode: canonical.encodeFcvtDH,
       instructionLength: 4,
       signatures: [
@@ -2896,6 +3371,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.h.d',
     {
+      requires: ['d', 'zfhmin'],
       encode: canonical.encodeFcvtHD,
       instructionLength: 4,
       signatures: [
@@ -2913,6 +3389,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'flw',
     {
+      requires: ['f'],
       encode: canonical.encodeFlw,
       instructionLength: 4,
       signatures: [
@@ -2930,6 +3407,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsw',
     {
+      requires: ['f'],
       encode: canonical.encodeFsw,
       instructionLength: 4,
       signatures: [
@@ -2948,6 +3426,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmadd.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFmaddS,
       instructionLength: 4,
       signatures: [
@@ -2967,6 +3446,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmsub.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFmsubS,
       instructionLength: 4,
       signatures: [
@@ -2986,6 +3466,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fnmsub.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFnmsubS,
       instructionLength: 4,
       signatures: [
@@ -3005,6 +3486,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fnmadd.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFnmaddS,
       instructionLength: 4,
       signatures: [
@@ -3024,6 +3506,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fadd.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFaddS,
       instructionLength: 4,
       signatures: [
@@ -3042,6 +3525,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsub.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFsubS,
       instructionLength: 4,
       signatures: [
@@ -3060,6 +3544,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmul.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFmulS,
       instructionLength: 4,
       signatures: [
@@ -3078,6 +3563,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fdiv.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFdivS,
       instructionLength: 4,
       signatures: [
@@ -3096,6 +3582,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsqrt.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFsqrtS,
       instructionLength: 4,
       signatures: [
@@ -3113,6 +3600,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnj.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFsgnjS,
       instructionLength: 4,
       signatures: [
@@ -3130,6 +3618,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnjn.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFsgnjnS,
       instructionLength: 4,
       signatures: [
@@ -3147,6 +3636,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnjx.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFsgnjxS,
       instructionLength: 4,
       signatures: [
@@ -3164,6 +3654,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmin.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFminS,
       instructionLength: 4,
       signatures: [
@@ -3181,6 +3672,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmax.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFmaxS,
       instructionLength: 4,
       signatures: [
@@ -3198,6 +3690,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.w.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFcvtWS,
       instructionLength: 4,
       signatures: [
@@ -3215,6 +3708,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.wu.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFcvtWuS,
       instructionLength: 4,
       signatures: [
@@ -3232,6 +3726,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmv.x.w',
     {
+      requires: ['f'],
       encode: canonical.encodeFmvXW,
       instructionLength: 4,
       signatures: [
@@ -3248,6 +3743,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'feq.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFeqS,
       instructionLength: 4,
       signatures: [
@@ -3265,6 +3761,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'flt.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFltS,
       instructionLength: 4,
       signatures: [
@@ -3282,6 +3779,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fle.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFleS,
       instructionLength: 4,
       signatures: [
@@ -3299,6 +3797,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fclass.s',
     {
+      requires: ['f'],
       encode: canonical.encodeFclassS,
       instructionLength: 4,
       signatures: [
@@ -3315,6 +3814,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.s.w',
     {
+      requires: ['f'],
       encode: canonical.encodeFcvtSW,
       instructionLength: 4,
       signatures: [
@@ -3332,6 +3832,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.s.wu',
     {
+      requires: ['f'],
       encode: canonical.encodeFcvtSWu,
       instructionLength: 4,
       signatures: [
@@ -3349,6 +3850,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmv.w.x',
     {
+      requires: ['f'],
       encode: canonical.encodeFmvWX,
       instructionLength: 4,
       signatures: [
@@ -3365,6 +3867,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fli.s',
     {
+      requires: ['f', 'zfa'],
       encode: canonical.encodeFliS,
       instructionLength: 4,
       signatures: [
@@ -3381,6 +3884,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fminm.s',
     {
+      requires: ['f', 'zfa'],
       encode: canonical.encodeFminmS,
       instructionLength: 4,
       signatures: [
@@ -3398,6 +3902,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmaxm.s',
     {
+      requires: ['f', 'zfa'],
       encode: canonical.encodeFmaxmS,
       instructionLength: 4,
       signatures: [
@@ -3415,6 +3920,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fround.s',
     {
+      requires: ['f', 'zfa'],
       encode: canonical.encodeFroundS,
       instructionLength: 4,
       signatures: [
@@ -3432,6 +3938,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'froundnx.s',
     {
+      requires: ['f', 'zfa'],
       encode: canonical.encodeFroundnxS,
       instructionLength: 4,
       signatures: [
@@ -3449,6 +3956,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fleq.s',
     {
+      requires: ['f', 'zfa'],
       encode: canonical.encodeFleqS,
       instructionLength: 4,
       signatures: [
@@ -3466,6 +3974,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fltq.s',
     {
+      requires: ['f', 'zfa'],
       encode: canonical.encodeFltqS,
       instructionLength: 4,
       signatures: [
@@ -3483,6 +3992,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hfence.vvma',
     {
+      requires: ['h'],
       encode: canonical.encodeHfenceVvma,
       instructionLength: 4,
       signatures: [
@@ -3499,6 +4009,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hfence.gvma',
     {
+      requires: ['h'],
       encode: canonical.encodeHfenceGvma,
       instructionLength: 4,
       signatures: [
@@ -3515,6 +4026,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hlv.b',
     {
+      requires: ['h'],
       encode: canonical.encodeHlvB,
       instructionLength: 4,
       signatures: [
@@ -3531,6 +4043,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hlv.bu',
     {
+      requires: ['h'],
       encode: canonical.encodeHlvBu,
       instructionLength: 4,
       signatures: [
@@ -3547,6 +4060,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hlv.h',
     {
+      requires: ['h'],
       encode: canonical.encodeHlvH,
       instructionLength: 4,
       signatures: [
@@ -3563,6 +4077,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hlv.hu',
     {
+      requires: ['h'],
       encode: canonical.encodeHlvHu,
       instructionLength: 4,
       signatures: [
@@ -3579,6 +4094,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hlvx.hu',
     {
+      requires: ['h'],
       encode: canonical.encodeHlvxHu,
       instructionLength: 4,
       signatures: [
@@ -3595,6 +4111,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hlv.w',
     {
+      requires: ['h'],
       encode: canonical.encodeHlvW,
       instructionLength: 4,
       signatures: [
@@ -3611,6 +4128,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hlvx.wu',
     {
+      requires: ['h'],
       encode: canonical.encodeHlvxWu,
       instructionLength: 4,
       signatures: [
@@ -3627,6 +4145,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hsv.b',
     {
+      requires: ['h'],
       encode: canonical.encodeHsvB,
       instructionLength: 4,
       signatures: [
@@ -3643,6 +4162,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hsv.h',
     {
+      requires: ['h'],
       encode: canonical.encodeHsvH,
       instructionLength: 4,
       signatures: [
@@ -3659,6 +4179,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hsv.w',
     {
+      requires: ['h'],
       encode: canonical.encodeHsvW,
       instructionLength: 4,
       signatures: [
@@ -3675,6 +4196,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lui',
     {
+      requires: ['i'],
       encode: canonical.encodeLui,
       instructionLength: 4,
       signatures: [
@@ -3691,6 +4213,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'auipc',
     {
+      requires: ['i'],
       encode: canonical.encodeAuipc,
       instructionLength: 4,
       signatures: [
@@ -3707,6 +4230,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'jal',
     {
+      requires: ['i'],
       encode: canonical.encodeJal,
       instructionLength: 4,
       signatures: [
@@ -3730,6 +4254,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'jalr',
     {
+      requires: ['i'],
       encode: canonical.encodeJalr,
       instructionLength: 4,
       signatures: [
@@ -3763,6 +4288,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'beq',
     {
+      requires: ['i'],
       encode: canonical.encodeBeq,
       instructionLength: 4,
       signatures: [
@@ -3781,6 +4307,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bne',
     {
+      requires: ['i'],
       encode: canonical.encodeBne,
       instructionLength: 4,
       signatures: [
@@ -3799,6 +4326,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'blt',
     {
+      requires: ['i'],
       encode: canonical.encodeBlt,
       instructionLength: 4,
       signatures: [
@@ -3817,6 +4345,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bge',
     {
+      requires: ['i'],
       encode: canonical.encodeBge,
       instructionLength: 4,
       signatures: [
@@ -3835,6 +4364,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bltu',
     {
+      requires: ['i'],
       encode: canonical.encodeBltu,
       instructionLength: 4,
       signatures: [
@@ -3853,6 +4383,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bgeu',
     {
+      requires: ['i'],
       encode: canonical.encodeBgeu,
       instructionLength: 4,
       signatures: [
@@ -3871,6 +4402,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lb',
     {
+      requires: ['i'],
       encode: canonical.encodeLb,
       instructionLength: 4,
       signatures: [
@@ -3888,6 +4420,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lh',
     {
+      requires: ['i'],
       encode: canonical.encodeLh,
       instructionLength: 4,
       signatures: [
@@ -3905,6 +4438,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lw',
     {
+      requires: ['i'],
       encode: canonical.encodeLw,
       instructionLength: 4,
       signatures: [
@@ -3922,6 +4456,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lbu',
     {
+      requires: ['i'],
       encode: canonical.encodeLbu,
       instructionLength: 4,
       signatures: [
@@ -3939,6 +4474,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lhu',
     {
+      requires: ['i'],
       encode: canonical.encodeLhu,
       instructionLength: 4,
       signatures: [
@@ -3956,6 +4492,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sb',
     {
+      requires: ['i'],
       encode: canonical.encodeSb,
       instructionLength: 4,
       signatures: [
@@ -3974,6 +4511,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sh',
     {
+      requires: ['i'],
       encode: canonical.encodeSh,
       instructionLength: 4,
       signatures: [
@@ -3992,6 +4530,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sw',
     {
+      requires: ['i'],
       encode: canonical.encodeSw,
       instructionLength: 4,
       signatures: [
@@ -4010,6 +4549,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'addi',
     {
+      requires: ['i'],
       encode: canonical.encodeAddi,
       instructionLength: 4,
       signatures: [
@@ -4027,6 +4567,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'slti',
     {
+      requires: ['i'],
       encode: canonical.encodeSlti,
       instructionLength: 4,
       signatures: [
@@ -4044,6 +4585,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sltiu',
     {
+      requires: ['i'],
       encode: canonical.encodeSltiu,
       instructionLength: 4,
       signatures: [
@@ -4061,6 +4603,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'xori',
     {
+      requires: ['i'],
       encode: canonical.encodeXori,
       instructionLength: 4,
       signatures: [
@@ -4078,6 +4621,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ori',
     {
+      requires: ['i'],
       encode: canonical.encodeOri,
       instructionLength: 4,
       signatures: [
@@ -4095,6 +4639,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'andi',
     {
+      requires: ['i'],
       encode: canonical.encodeAndi,
       instructionLength: 4,
       signatures: [
@@ -4112,6 +4657,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'add',
     {
+      requires: ['i'],
       encode: canonical.encodeAdd,
       instructionLength: 4,
       signatures: [
@@ -4129,6 +4675,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sub',
     {
+      requires: ['i'],
       encode: canonical.encodeSub,
       instructionLength: 4,
       signatures: [
@@ -4146,6 +4693,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sll',
     {
+      requires: ['i'],
       encode: canonical.encodeSll,
       instructionLength: 4,
       signatures: [
@@ -4163,6 +4711,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'slt',
     {
+      requires: ['i'],
       encode: canonical.encodeSlt,
       instructionLength: 4,
       signatures: [
@@ -4180,6 +4729,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sltu',
     {
+      requires: ['i'],
       encode: canonical.encodeSltu,
       instructionLength: 4,
       signatures: [
@@ -4197,6 +4747,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'xor',
     {
+      requires: ['i'],
       encode: canonical.encodeXor,
       instructionLength: 4,
       signatures: [
@@ -4214,6 +4765,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'srl',
     {
+      requires: ['i'],
       encode: canonical.encodeSrl,
       instructionLength: 4,
       signatures: [
@@ -4231,6 +4783,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sra',
     {
+      requires: ['i'],
       encode: canonical.encodeSra,
       instructionLength: 4,
       signatures: [
@@ -4248,6 +4801,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'or',
     {
+      requires: ['i'],
       encode: canonical.encodeOr,
       instructionLength: 4,
       signatures: [
@@ -4265,6 +4819,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'and',
     {
+      requires: ['i'],
       encode: canonical.encodeAnd,
       instructionLength: 4,
       signatures: [
@@ -4282,6 +4837,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fence',
     {
+      requires: ['i'],
       encode: canonical.encodeFence,
       instructionLength: 4,
       signatures: [
@@ -4301,6 +4857,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ecall',
     {
+      requires: ['i'],
       encode: canonical.encodeEcall,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -4309,6 +4866,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ebreak',
     {
+      requires: ['i'],
       encode: canonical.encodeEbreak,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -4317,6 +4875,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'mul',
     {
+      requires: ['m'],
       encode: canonical.encodeMul,
       instructionLength: 4,
       signatures: [
@@ -4334,6 +4893,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'mulh',
     {
+      requires: ['m'],
       encode: canonical.encodeMulh,
       instructionLength: 4,
       signatures: [
@@ -4351,6 +4911,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'mulhsu',
     {
+      requires: ['m'],
       encode: canonical.encodeMulhsu,
       instructionLength: 4,
       signatures: [
@@ -4368,6 +4929,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'mulhu',
     {
+      requires: ['m'],
       encode: canonical.encodeMulhu,
       instructionLength: 4,
       signatures: [
@@ -4385,6 +4947,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'div',
     {
+      requires: ['m'],
       encode: canonical.encodeDiv,
       instructionLength: 4,
       signatures: [
@@ -4402,6 +4965,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'divu',
     {
+      requires: ['m'],
       encode: canonical.encodeDivu,
       instructionLength: 4,
       signatures: [
@@ -4419,6 +4983,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rem',
     {
+      requires: ['m'],
       encode: canonical.encodeRem,
       instructionLength: 4,
       signatures: [
@@ -4436,6 +5001,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'remu',
     {
+      requires: ['m'],
       encode: canonical.encodeRemu,
       instructionLength: 4,
       signatures: [
@@ -4453,6 +5019,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'flq',
     {
+      requires: ['q'],
       encode: canonical.encodeFlq,
       instructionLength: 4,
       signatures: [
@@ -4470,6 +5037,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsq',
     {
+      requires: ['q'],
       encode: canonical.encodeFsq,
       instructionLength: 4,
       signatures: [
@@ -4488,6 +5056,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmadd.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFmaddQ,
       instructionLength: 4,
       signatures: [
@@ -4507,6 +5076,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmsub.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFmsubQ,
       instructionLength: 4,
       signatures: [
@@ -4526,6 +5096,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fnmsub.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFnmsubQ,
       instructionLength: 4,
       signatures: [
@@ -4545,6 +5116,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fnmadd.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFnmaddQ,
       instructionLength: 4,
       signatures: [
@@ -4564,6 +5136,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fadd.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFaddQ,
       instructionLength: 4,
       signatures: [
@@ -4582,6 +5155,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsub.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFsubQ,
       instructionLength: 4,
       signatures: [
@@ -4600,6 +5174,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmul.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFmulQ,
       instructionLength: 4,
       signatures: [
@@ -4618,6 +5193,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fdiv.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFdivQ,
       instructionLength: 4,
       signatures: [
@@ -4636,6 +5212,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsqrt.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFsqrtQ,
       instructionLength: 4,
       signatures: [
@@ -4653,6 +5230,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnj.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFsgnjQ,
       instructionLength: 4,
       signatures: [
@@ -4670,6 +5248,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnjn.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFsgnjnQ,
       instructionLength: 4,
       signatures: [
@@ -4687,6 +5266,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnjx.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFsgnjxQ,
       instructionLength: 4,
       signatures: [
@@ -4704,6 +5284,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmin.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFminQ,
       instructionLength: 4,
       signatures: [
@@ -4721,6 +5302,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmax.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFmaxQ,
       instructionLength: 4,
       signatures: [
@@ -4738,6 +5320,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.s.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtSQ,
       instructionLength: 4,
       signatures: [
@@ -4755,6 +5338,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.q.s',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtQS,
       instructionLength: 4,
       signatures: [
@@ -4772,6 +5356,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.d.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtDQ,
       instructionLength: 4,
       signatures: [
@@ -4789,6 +5374,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.q.d',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtQD,
       instructionLength: 4,
       signatures: [
@@ -4806,6 +5392,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'feq.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFeqQ,
       instructionLength: 4,
       signatures: [
@@ -4823,6 +5410,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'flt.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFltQ,
       instructionLength: 4,
       signatures: [
@@ -4840,6 +5428,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fle.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFleQ,
       instructionLength: 4,
       signatures: [
@@ -4857,6 +5446,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fclass.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFclassQ,
       instructionLength: 4,
       signatures: [
@@ -4873,6 +5463,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.w.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtWQ,
       instructionLength: 4,
       signatures: [
@@ -4890,6 +5481,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.wu.q',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtWuQ,
       instructionLength: 4,
       signatures: [
@@ -4907,6 +5499,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.q.w',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtQW,
       instructionLength: 4,
       signatures: [
@@ -4924,6 +5517,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.q.wu',
     {
+      requires: ['q'],
       encode: canonical.encodeFcvtQWu,
       instructionLength: 4,
       signatures: [
@@ -4941,6 +5535,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fli.q',
     {
+      requires: ['q', 'zfa'],
       encode: canonical.encodeFliQ,
       instructionLength: 4,
       signatures: [
@@ -4957,6 +5552,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fminm.q',
     {
+      requires: ['q', 'zfa'],
       encode: canonical.encodeFminmQ,
       instructionLength: 4,
       signatures: [
@@ -4974,6 +5570,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmaxm.q',
     {
+      requires: ['q', 'zfa'],
       encode: canonical.encodeFmaxmQ,
       instructionLength: 4,
       signatures: [
@@ -4991,6 +5588,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fround.q',
     {
+      requires: ['q', 'zfa'],
       encode: canonical.encodeFroundQ,
       instructionLength: 4,
       signatures: [
@@ -5008,6 +5606,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'froundnx.q',
     {
+      requires: ['q', 'zfa'],
       encode: canonical.encodeFroundnxQ,
       instructionLength: 4,
       signatures: [
@@ -5025,6 +5624,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fleq.q',
     {
+      requires: ['q', 'zfa'],
       encode: canonical.encodeFleqQ,
       instructionLength: 4,
       signatures: [
@@ -5042,6 +5642,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fltq.q',
     {
+      requires: ['q', 'zfa'],
       encode: canonical.encodeFltqQ,
       instructionLength: 4,
       signatures: [
@@ -5059,6 +5660,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.q.h',
     {
+      requires: ['q', 'zfhmin'],
       encode: canonical.encodeFcvtQH,
       instructionLength: 4,
       signatures: [
@@ -5076,6 +5678,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.h.q',
     {
+      requires: ['q', 'zfhmin'],
       encode: canonical.encodeFcvtHQ,
       instructionLength: 4,
       signatures: [
@@ -5093,9 +5696,24 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sfence.vma',
     {
+      requires: ['s'],
       encode: canonical.encodeSfenceVma,
       instructionLength: 4,
       signatures: [
+        {
+          sourceSignature: [] as const,
+          encoderSignature: [
+            { type: 'constant', value: 0 },
+            { type: 'constant', value: 0 },
+          ] as const,
+        },
+        {
+          sourceSignature: ['register'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            { type: 'constant', value: 0 },
+          ] as const,
+        },
         {
           sourceSignature: ['register', 'register'] as const,
           encoderSignature: [
@@ -5109,6 +5727,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sret',
     {
+      requires: ['s'],
       encode: canonical.encodeSret,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -5117,6 +5736,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'dret',
     {
+      requires: ['sdext'],
       encode: canonical.encodeDret,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -5125,6 +5745,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'mnret',
     {
+      requires: ['smrnmi'],
       encode: canonical.encodeMnret,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -5133,6 +5754,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sctrclr',
     {
+      requires: ['ssctr'],
       encode: canonical.encodeSctrclr,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -5141,6 +5763,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sinval.vma',
     {
+      requires: ['svinval'],
       encode: canonical.encodeSinvalVma,
       instructionLength: 4,
       signatures: [
@@ -5157,6 +5780,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sfence.w.inval',
     {
+      requires: ['svinval'],
       encode: canonical.encodeSfenceWInval,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -5165,6 +5789,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sfence.inval.ir',
     {
+      requires: ['svinval'],
       encode: canonical.encodeSfenceInvalIr,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -5173,6 +5798,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hinval.vvma',
     {
+      requires: ['svinval', 'h'],
       encode: canonical.encodeHinvalVvma,
       instructionLength: 4,
       signatures: [
@@ -5189,6 +5815,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'hinval.gvma',
     {
+      requires: ['svinval', 'h'],
       encode: canonical.encodeHinvalGvma,
       instructionLength: 4,
       signatures: [
@@ -5205,6 +5832,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'mret',
     {
+      requires: ['system'],
       encode: canonical.encodeMret,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -5213,6 +5841,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'wfi',
     {
+      requires: ['system'],
       encode: canonical.encodeWfi,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -5221,6 +5850,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsetivli',
     {
+      requires: ['v'],
       encode: canonical.encodeVsetivli,
       instructionLength: 4,
       signatures: [
@@ -5238,6 +5868,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsetvli',
     {
+      requires: ['v'],
       encode: canonical.encodeVsetvli,
       instructionLength: 4,
       signatures: [
@@ -5255,6 +5886,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsetvl',
     {
+      requires: ['v'],
       encode: canonical.encodeVsetvl,
       instructionLength: 4,
       signatures: [
@@ -5272,6 +5904,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vlm.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVlmV,
       instructionLength: 4,
       signatures: [
@@ -5288,6 +5921,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsm.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsmV,
       instructionLength: 4,
       signatures: [
@@ -5304,6 +5938,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vle8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVle8V,
       instructionLength: 4,
       signatures: [
@@ -5322,6 +5957,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vle16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVle16V,
       instructionLength: 4,
       signatures: [
@@ -5340,6 +5976,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vle32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVle32V,
       instructionLength: 4,
       signatures: [
@@ -5358,6 +5995,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vle64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVle64V,
       instructionLength: 4,
       signatures: [
@@ -5376,6 +6014,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vse8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVse8V,
       instructionLength: 4,
       signatures: [
@@ -5394,6 +6033,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vse16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVse16V,
       instructionLength: 4,
       signatures: [
@@ -5412,6 +6052,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vse32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVse32V,
       instructionLength: 4,
       signatures: [
@@ -5430,6 +6071,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vse64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVse64V,
       instructionLength: 4,
       signatures: [
@@ -5448,6 +6090,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vluxei8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVluxei8V,
       instructionLength: 4,
       signatures: [
@@ -5467,6 +6110,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vluxei16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVluxei16V,
       instructionLength: 4,
       signatures: [
@@ -5486,6 +6130,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vluxei32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVluxei32V,
       instructionLength: 4,
       signatures: [
@@ -5505,6 +6150,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vluxei64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVluxei64V,
       instructionLength: 4,
       signatures: [
@@ -5524,6 +6170,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsuxei8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsuxei8V,
       instructionLength: 4,
       signatures: [
@@ -5543,6 +6190,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsuxei16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsuxei16V,
       instructionLength: 4,
       signatures: [
@@ -5562,6 +6210,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsuxei32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsuxei32V,
       instructionLength: 4,
       signatures: [
@@ -5581,6 +6230,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsuxei64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsuxei64V,
       instructionLength: 4,
       signatures: [
@@ -5600,6 +6250,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vlse8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVlse8V,
       instructionLength: 4,
       signatures: [
@@ -5619,6 +6270,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vlse16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVlse16V,
       instructionLength: 4,
       signatures: [
@@ -5638,6 +6290,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vlse32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVlse32V,
       instructionLength: 4,
       signatures: [
@@ -5657,6 +6310,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vlse64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVlse64V,
       instructionLength: 4,
       signatures: [
@@ -5676,6 +6330,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsse8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsse8V,
       instructionLength: 4,
       signatures: [
@@ -5695,6 +6350,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsse16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsse16V,
       instructionLength: 4,
       signatures: [
@@ -5714,6 +6370,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsse32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsse32V,
       instructionLength: 4,
       signatures: [
@@ -5733,6 +6390,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsse64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsse64V,
       instructionLength: 4,
       signatures: [
@@ -5752,6 +6410,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vloxei8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVloxei8V,
       instructionLength: 4,
       signatures: [
@@ -5771,6 +6430,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vloxei16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVloxei16V,
       instructionLength: 4,
       signatures: [
@@ -5790,6 +6450,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vloxei32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVloxei32V,
       instructionLength: 4,
       signatures: [
@@ -5809,6 +6470,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vloxei64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVloxei64V,
       instructionLength: 4,
       signatures: [
@@ -5828,6 +6490,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsoxei8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsoxei8V,
       instructionLength: 4,
       signatures: [
@@ -5847,6 +6510,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsoxei16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsoxei16V,
       instructionLength: 4,
       signatures: [
@@ -5866,6 +6530,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsoxei32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsoxei32V,
       instructionLength: 4,
       signatures: [
@@ -5885,6 +6550,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsoxei64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVsoxei64V,
       instructionLength: 4,
       signatures: [
@@ -5904,6 +6570,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vle8ff.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVle8ffV,
       instructionLength: 4,
       signatures: [
@@ -5922,6 +6589,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vle16ff.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVle16ffV,
       instructionLength: 4,
       signatures: [
@@ -5940,6 +6608,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vle32ff.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVle32ffV,
       instructionLength: 4,
       signatures: [
@@ -5958,6 +6627,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vle64ff.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVle64ffV,
       instructionLength: 4,
       signatures: [
@@ -5976,6 +6646,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl1re8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl1re8V,
       instructionLength: 4,
       signatures: [
@@ -5992,6 +6663,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl1re16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl1re16V,
       instructionLength: 4,
       signatures: [
@@ -6008,6 +6680,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl1re32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl1re32V,
       instructionLength: 4,
       signatures: [
@@ -6024,6 +6697,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl1re64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl1re64V,
       instructionLength: 4,
       signatures: [
@@ -6040,6 +6714,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl2re8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl2re8V,
       instructionLength: 4,
       signatures: [
@@ -6056,6 +6731,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl2re16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl2re16V,
       instructionLength: 4,
       signatures: [
@@ -6072,6 +6748,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl2re32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl2re32V,
       instructionLength: 4,
       signatures: [
@@ -6088,6 +6765,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl2re64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl2re64V,
       instructionLength: 4,
       signatures: [
@@ -6104,6 +6782,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl4re8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl4re8V,
       instructionLength: 4,
       signatures: [
@@ -6120,6 +6799,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl4re16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl4re16V,
       instructionLength: 4,
       signatures: [
@@ -6136,6 +6816,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl4re32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl4re32V,
       instructionLength: 4,
       signatures: [
@@ -6152,6 +6833,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl4re64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl4re64V,
       instructionLength: 4,
       signatures: [
@@ -6168,6 +6850,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl8re8.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl8re8V,
       instructionLength: 4,
       signatures: [
@@ -6184,6 +6867,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl8re16.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl8re16V,
       instructionLength: 4,
       signatures: [
@@ -6200,6 +6884,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl8re32.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl8re32V,
       instructionLength: 4,
       signatures: [
@@ -6216,6 +6901,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl8re64.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVl8re64V,
       instructionLength: 4,
       signatures: [
@@ -6232,6 +6918,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vs1r.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVs1rV,
       instructionLength: 4,
       signatures: [
@@ -6248,6 +6935,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vs2r.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVs2rV,
       instructionLength: 4,
       signatures: [
@@ -6264,6 +6952,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vs4r.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVs4rV,
       instructionLength: 4,
       signatures: [
@@ -6280,6 +6969,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vs8r.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVs8rV,
       instructionLength: 4,
       signatures: [
@@ -6296,6 +6986,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfadd.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfaddVf,
       instructionLength: 4,
       signatures: [
@@ -6314,6 +7005,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfsub.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfsubVf,
       instructionLength: 4,
       signatures: [
@@ -6332,6 +7024,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmin.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfminVf,
       instructionLength: 4,
       signatures: [
@@ -6350,6 +7043,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmax.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmaxVf,
       instructionLength: 4,
       signatures: [
@@ -6368,6 +7062,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfsgnj.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfsgnjVf,
       instructionLength: 4,
       signatures: [
@@ -6386,6 +7081,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfsgnjn.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfsgnjnVf,
       instructionLength: 4,
       signatures: [
@@ -6404,6 +7100,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfsgnjx.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfsgnjxVf,
       instructionLength: 4,
       signatures: [
@@ -6422,6 +7119,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfslide1up.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfslide1upVf,
       instructionLength: 4,
       signatures: [
@@ -6440,6 +7138,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfslide1down.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfslide1downVf,
       instructionLength: 4,
       signatures: [
@@ -6458,6 +7157,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmv.s.f',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmvSF,
       instructionLength: 4,
       signatures: [
@@ -6474,6 +7174,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmerge.vfm',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmergeVfm,
       instructionLength: 4,
       signatures: [
@@ -6491,6 +7192,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmv.v.f',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmvVF,
       instructionLength: 4,
       signatures: [
@@ -6507,6 +7209,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmfeq.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVmfeqVf,
       instructionLength: 4,
       signatures: [
@@ -6525,6 +7228,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmfle.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVmfleVf,
       instructionLength: 4,
       signatures: [
@@ -6543,6 +7247,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmflt.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVmfltVf,
       instructionLength: 4,
       signatures: [
@@ -6561,6 +7266,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmfne.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVmfneVf,
       instructionLength: 4,
       signatures: [
@@ -6579,6 +7285,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmfgt.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVmfgtVf,
       instructionLength: 4,
       signatures: [
@@ -6597,6 +7304,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmfge.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVmfgeVf,
       instructionLength: 4,
       signatures: [
@@ -6615,6 +7323,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfdiv.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfdivVf,
       instructionLength: 4,
       signatures: [
@@ -6633,6 +7342,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfrdiv.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfrdivVf,
       instructionLength: 4,
       signatures: [
@@ -6651,6 +7361,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmul.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmulVf,
       instructionLength: 4,
       signatures: [
@@ -6669,6 +7380,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfrsub.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfrsubVf,
       instructionLength: 4,
       signatures: [
@@ -6687,6 +7399,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmadd.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmaddVf,
       instructionLength: 4,
       signatures: [
@@ -6705,6 +7418,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfnmadd.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfnmaddVf,
       instructionLength: 4,
       signatures: [
@@ -6723,6 +7437,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmsub.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmsubVf,
       instructionLength: 4,
       signatures: [
@@ -6741,6 +7456,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfnmsub.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfnmsubVf,
       instructionLength: 4,
       signatures: [
@@ -6759,6 +7475,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmacc.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmaccVf,
       instructionLength: 4,
       signatures: [
@@ -6777,6 +7494,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfnmacc.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfnmaccVf,
       instructionLength: 4,
       signatures: [
@@ -6795,6 +7513,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmsac.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmsacVf,
       instructionLength: 4,
       signatures: [
@@ -6813,6 +7532,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfnmsac.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfnmsacVf,
       instructionLength: 4,
       signatures: [
@@ -6831,6 +7551,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwadd.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwaddVf,
       instructionLength: 4,
       signatures: [
@@ -6849,6 +7570,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwsub.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwsubVf,
       instructionLength: 4,
       signatures: [
@@ -6867,6 +7589,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwadd.wf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwaddWf,
       instructionLength: 4,
       signatures: [
@@ -6885,6 +7608,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwsub.wf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwsubWf,
       instructionLength: 4,
       signatures: [
@@ -6903,6 +7627,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwmul.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwmulVf,
       instructionLength: 4,
       signatures: [
@@ -6921,6 +7646,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwmacc.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwmaccVf,
       instructionLength: 4,
       signatures: [
@@ -6939,6 +7665,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwnmacc.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwnmaccVf,
       instructionLength: 4,
       signatures: [
@@ -6957,6 +7684,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwmsac.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwmsacVf,
       instructionLength: 4,
       signatures: [
@@ -6975,6 +7703,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwnmsac.vf',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwnmsacVf,
       instructionLength: 4,
       signatures: [
@@ -6993,6 +7722,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfadd.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfaddVv,
       instructionLength: 4,
       signatures: [
@@ -7011,6 +7741,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfredusum.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVfredusumVs,
       instructionLength: 4,
       signatures: [
@@ -7029,6 +7760,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfsub.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfsubVv,
       instructionLength: 4,
       signatures: [
@@ -7047,6 +7779,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfredosum.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVfredosumVs,
       instructionLength: 4,
       signatures: [
@@ -7065,6 +7798,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmin.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfminVv,
       instructionLength: 4,
       signatures: [
@@ -7083,6 +7817,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfredmin.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVfredminVs,
       instructionLength: 4,
       signatures: [
@@ -7101,6 +7836,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmax.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmaxVv,
       instructionLength: 4,
       signatures: [
@@ -7119,6 +7855,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfredmax.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVfredmaxVs,
       instructionLength: 4,
       signatures: [
@@ -7137,6 +7874,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfsgnj.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfsgnjVv,
       instructionLength: 4,
       signatures: [
@@ -7155,6 +7893,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfsgnjn.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfsgnjnVv,
       instructionLength: 4,
       signatures: [
@@ -7173,6 +7912,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfsgnjx.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfsgnjxVv,
       instructionLength: 4,
       signatures: [
@@ -7191,6 +7931,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmv.f.s',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmvFS,
       instructionLength: 4,
       signatures: [
@@ -7207,6 +7948,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmfeq.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmfeqVv,
       instructionLength: 4,
       signatures: [
@@ -7225,6 +7967,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmfle.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmfleVv,
       instructionLength: 4,
       signatures: [
@@ -7243,6 +7986,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmflt.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmfltVv,
       instructionLength: 4,
       signatures: [
@@ -7261,6 +8005,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmfne.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmfneVv,
       instructionLength: 4,
       signatures: [
@@ -7279,6 +8024,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfdiv.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfdivVv,
       instructionLength: 4,
       signatures: [
@@ -7297,6 +8043,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmul.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmulVv,
       instructionLength: 4,
       signatures: [
@@ -7315,6 +8062,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmadd.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmaddVv,
       instructionLength: 4,
       signatures: [
@@ -7333,6 +8081,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfnmadd.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfnmaddVv,
       instructionLength: 4,
       signatures: [
@@ -7351,6 +8100,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmsub.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmsubVv,
       instructionLength: 4,
       signatures: [
@@ -7369,6 +8119,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfnmsub.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfnmsubVv,
       instructionLength: 4,
       signatures: [
@@ -7387,6 +8138,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmacc.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmaccVv,
       instructionLength: 4,
       signatures: [
@@ -7405,6 +8157,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfnmacc.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfnmaccVv,
       instructionLength: 4,
       signatures: [
@@ -7423,6 +8176,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfmsac.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfmsacVv,
       instructionLength: 4,
       signatures: [
@@ -7441,6 +8195,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfnmsac.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfnmsacVv,
       instructionLength: 4,
       signatures: [
@@ -7459,6 +8214,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfcvt.xu.f.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfcvtXuFV,
       instructionLength: 4,
       signatures: [
@@ -7476,6 +8232,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfcvt.x.f.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfcvtXFV,
       instructionLength: 4,
       signatures: [
@@ -7493,6 +8250,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfcvt.f.xu.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfcvtFXuV,
       instructionLength: 4,
       signatures: [
@@ -7510,6 +8268,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfcvt.f.x.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfcvtFXV,
       instructionLength: 4,
       signatures: [
@@ -7527,6 +8286,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfcvt.rtz.xu.f.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfcvtRtzXuFV,
       instructionLength: 4,
       signatures: [
@@ -7544,6 +8304,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfcvt.rtz.x.f.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfcvtRtzXFV,
       instructionLength: 4,
       signatures: [
@@ -7561,6 +8322,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwcvt.xu.f.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwcvtXuFV,
       instructionLength: 4,
       signatures: [
@@ -7578,6 +8340,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwcvt.x.f.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwcvtXFV,
       instructionLength: 4,
       signatures: [
@@ -7595,6 +8358,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwcvt.f.xu.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwcvtFXuV,
       instructionLength: 4,
       signatures: [
@@ -7612,6 +8376,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwcvt.f.x.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwcvtFXV,
       instructionLength: 4,
       signatures: [
@@ -7629,6 +8394,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwcvt.f.f.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwcvtFFV,
       instructionLength: 4,
       signatures: [
@@ -7646,6 +8412,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwcvt.rtz.xu.f.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwcvtRtzXuFV,
       instructionLength: 4,
       signatures: [
@@ -7663,6 +8430,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwcvt.rtz.x.f.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwcvtRtzXFV,
       instructionLength: 4,
       signatures: [
@@ -7680,6 +8448,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfncvt.xu.f.w',
     {
+      requires: ['v'],
       encode: canonical.encodeVfncvtXuFW,
       instructionLength: 4,
       signatures: [
@@ -7697,6 +8466,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfncvt.x.f.w',
     {
+      requires: ['v'],
       encode: canonical.encodeVfncvtXFW,
       instructionLength: 4,
       signatures: [
@@ -7714,6 +8484,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfncvt.f.xu.w',
     {
+      requires: ['v'],
       encode: canonical.encodeVfncvtFXuW,
       instructionLength: 4,
       signatures: [
@@ -7731,6 +8502,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfncvt.f.x.w',
     {
+      requires: ['v'],
       encode: canonical.encodeVfncvtFXW,
       instructionLength: 4,
       signatures: [
@@ -7748,6 +8520,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfncvt.f.f.w',
     {
+      requires: ['v'],
       encode: canonical.encodeVfncvtFFW,
       instructionLength: 4,
       signatures: [
@@ -7765,6 +8538,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfncvt.rod.f.f.w',
     {
+      requires: ['v'],
       encode: canonical.encodeVfncvtRodFFW,
       instructionLength: 4,
       signatures: [
@@ -7782,6 +8556,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfncvt.rtz.xu.f.w',
     {
+      requires: ['v'],
       encode: canonical.encodeVfncvtRtzXuFW,
       instructionLength: 4,
       signatures: [
@@ -7799,6 +8574,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfncvt.rtz.x.f.w',
     {
+      requires: ['v'],
       encode: canonical.encodeVfncvtRtzXFW,
       instructionLength: 4,
       signatures: [
@@ -7816,6 +8592,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfsqrt.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfsqrtV,
       instructionLength: 4,
       signatures: [
@@ -7833,6 +8610,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfrsqrt7.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfrsqrt7V,
       instructionLength: 4,
       signatures: [
@@ -7850,6 +8628,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfrec7.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfrec7V,
       instructionLength: 4,
       signatures: [
@@ -7867,6 +8646,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfclass.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVfclassV,
       instructionLength: 4,
       signatures: [
@@ -7884,6 +8664,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwadd.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwaddVv,
       instructionLength: 4,
       signatures: [
@@ -7902,6 +8683,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwredusum.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwredusumVs,
       instructionLength: 4,
       signatures: [
@@ -7920,6 +8702,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwsub.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwsubVv,
       instructionLength: 4,
       signatures: [
@@ -7938,6 +8721,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwredosum.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwredosumVs,
       instructionLength: 4,
       signatures: [
@@ -7956,6 +8740,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwadd.wv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwaddWv,
       instructionLength: 4,
       signatures: [
@@ -7974,6 +8759,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwsub.wv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwsubWv,
       instructionLength: 4,
       signatures: [
@@ -7992,6 +8778,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwmul.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwmulVv,
       instructionLength: 4,
       signatures: [
@@ -8010,6 +8797,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwmacc.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwmaccVv,
       instructionLength: 4,
       signatures: [
@@ -8028,6 +8816,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwnmacc.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwnmaccVv,
       instructionLength: 4,
       signatures: [
@@ -8046,6 +8835,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwmsac.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwmsacVv,
       instructionLength: 4,
       signatures: [
@@ -8064,6 +8854,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwnmsac.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVfwnmsacVv,
       instructionLength: 4,
       signatures: [
@@ -8082,6 +8873,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vadd.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVaddVx,
       instructionLength: 4,
       signatures: [
@@ -8100,6 +8892,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsub.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVsubVx,
       instructionLength: 4,
       signatures: [
@@ -8118,6 +8911,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vrsub.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVrsubVx,
       instructionLength: 4,
       signatures: [
@@ -8136,6 +8930,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vminu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVminuVx,
       instructionLength: 4,
       signatures: [
@@ -8154,6 +8949,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmin.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVminVx,
       instructionLength: 4,
       signatures: [
@@ -8172,6 +8968,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmaxu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmaxuVx,
       instructionLength: 4,
       signatures: [
@@ -8190,6 +8987,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmax.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmaxVx,
       instructionLength: 4,
       signatures: [
@@ -8208,6 +9006,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vand.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVandVx,
       instructionLength: 4,
       signatures: [
@@ -8226,6 +9025,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vor.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVorVx,
       instructionLength: 4,
       signatures: [
@@ -8244,6 +9044,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vxor.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVxorVx,
       instructionLength: 4,
       signatures: [
@@ -8262,6 +9063,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vrgather.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVrgatherVx,
       instructionLength: 4,
       signatures: [
@@ -8280,6 +9082,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vslideup.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVslideupVx,
       instructionLength: 4,
       signatures: [
@@ -8298,6 +9101,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vslidedown.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVslidedownVx,
       instructionLength: 4,
       signatures: [
@@ -8316,6 +9120,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vadc.vxm',
     {
+      requires: ['v'],
       encode: canonical.encodeVadcVxm,
       instructionLength: 4,
       signatures: [
@@ -8333,6 +9138,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmadc.vxm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmadcVxm,
       instructionLength: 4,
       signatures: [
@@ -8350,6 +9156,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmadc.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmadcVx,
       instructionLength: 4,
       signatures: [
@@ -8367,6 +9174,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsbc.vxm',
     {
+      requires: ['v'],
       encode: canonical.encodeVsbcVxm,
       instructionLength: 4,
       signatures: [
@@ -8384,6 +9192,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsbc.vxm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsbcVxm,
       instructionLength: 4,
       signatures: [
@@ -8401,6 +9210,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsbc.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsbcVx,
       instructionLength: 4,
       signatures: [
@@ -8418,6 +9228,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmerge.vxm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmergeVxm,
       instructionLength: 4,
       signatures: [
@@ -8435,6 +9246,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmv.v.x',
     {
+      requires: ['v'],
       encode: canonical.encodeVmvVX,
       instructionLength: 4,
       signatures: [
@@ -8451,6 +9263,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmseq.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmseqVx,
       instructionLength: 4,
       signatures: [
@@ -8469,6 +9282,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsne.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsneVx,
       instructionLength: 4,
       signatures: [
@@ -8487,6 +9301,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsltu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsltuVx,
       instructionLength: 4,
       signatures: [
@@ -8505,6 +9320,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmslt.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsltVx,
       instructionLength: 4,
       signatures: [
@@ -8523,6 +9339,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsleu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsleuVx,
       instructionLength: 4,
       signatures: [
@@ -8541,6 +9358,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsle.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsleVx,
       instructionLength: 4,
       signatures: [
@@ -8559,6 +9377,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsgtu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsgtuVx,
       instructionLength: 4,
       signatures: [
@@ -8577,6 +9396,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsgt.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsgtVx,
       instructionLength: 4,
       signatures: [
@@ -8595,6 +9415,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsaddu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVsadduVx,
       instructionLength: 4,
       signatures: [
@@ -8613,6 +9434,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsadd.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVsaddVx,
       instructionLength: 4,
       signatures: [
@@ -8631,6 +9453,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vssubu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVssubuVx,
       instructionLength: 4,
       signatures: [
@@ -8649,6 +9472,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vssub.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVssubVx,
       instructionLength: 4,
       signatures: [
@@ -8667,6 +9491,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsll.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVsllVx,
       instructionLength: 4,
       signatures: [
@@ -8685,6 +9510,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsmul.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVsmulVx,
       instructionLength: 4,
       signatures: [
@@ -8703,6 +9529,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsrl.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVsrlVx,
       instructionLength: 4,
       signatures: [
@@ -8721,6 +9548,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsra.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVsraVx,
       instructionLength: 4,
       signatures: [
@@ -8739,6 +9567,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vssrl.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVssrlVx,
       instructionLength: 4,
       signatures: [
@@ -8757,6 +9586,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vssra.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVssraVx,
       instructionLength: 4,
       signatures: [
@@ -8775,6 +9605,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnsrl.wx',
     {
+      requires: ['v'],
       encode: canonical.encodeVnsrlWx,
       instructionLength: 4,
       signatures: [
@@ -8793,6 +9624,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnsra.wx',
     {
+      requires: ['v'],
       encode: canonical.encodeVnsraWx,
       instructionLength: 4,
       signatures: [
@@ -8811,6 +9643,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnclipu.wx',
     {
+      requires: ['v'],
       encode: canonical.encodeVnclipuWx,
       instructionLength: 4,
       signatures: [
@@ -8829,6 +9662,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnclip.wx',
     {
+      requires: ['v'],
       encode: canonical.encodeVnclipWx,
       instructionLength: 4,
       signatures: [
@@ -8847,6 +9681,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vadd.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVaddVv,
       instructionLength: 4,
       signatures: [
@@ -8865,6 +9700,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsub.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVsubVv,
       instructionLength: 4,
       signatures: [
@@ -8883,6 +9719,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vminu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVminuVv,
       instructionLength: 4,
       signatures: [
@@ -8901,6 +9738,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmin.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVminVv,
       instructionLength: 4,
       signatures: [
@@ -8919,6 +9757,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmaxu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmaxuVv,
       instructionLength: 4,
       signatures: [
@@ -8937,6 +9776,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmax.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmaxVv,
       instructionLength: 4,
       signatures: [
@@ -8955,6 +9795,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vand.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVandVv,
       instructionLength: 4,
       signatures: [
@@ -8973,6 +9814,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vor.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVorVv,
       instructionLength: 4,
       signatures: [
@@ -8991,6 +9833,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vxor.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVxorVv,
       instructionLength: 4,
       signatures: [
@@ -9009,6 +9852,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vrgather.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVrgatherVv,
       instructionLength: 4,
       signatures: [
@@ -9027,6 +9871,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vrgatherei16.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVrgatherei16Vv,
       instructionLength: 4,
       signatures: [
@@ -9045,6 +9890,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vadc.vvm',
     {
+      requires: ['v'],
       encode: canonical.encodeVadcVvm,
       instructionLength: 4,
       signatures: [
@@ -9062,6 +9908,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmadc.vvm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmadcVvm,
       instructionLength: 4,
       signatures: [
@@ -9079,6 +9926,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmadc.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmadcVv,
       instructionLength: 4,
       signatures: [
@@ -9096,6 +9944,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsbc.vvm',
     {
+      requires: ['v'],
       encode: canonical.encodeVsbcVvm,
       instructionLength: 4,
       signatures: [
@@ -9113,6 +9962,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsbc.vvm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsbcVvm,
       instructionLength: 4,
       signatures: [
@@ -9130,6 +9980,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsbc.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsbcVv,
       instructionLength: 4,
       signatures: [
@@ -9147,6 +9998,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmerge.vvm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmergeVvm,
       instructionLength: 4,
       signatures: [
@@ -9164,6 +10016,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmv.v.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVmvVV,
       instructionLength: 4,
       signatures: [
@@ -9180,6 +10033,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmseq.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmseqVv,
       instructionLength: 4,
       signatures: [
@@ -9198,6 +10052,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsne.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsneVv,
       instructionLength: 4,
       signatures: [
@@ -9216,6 +10071,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsltu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsltuVv,
       instructionLength: 4,
       signatures: [
@@ -9234,6 +10090,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmslt.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsltVv,
       instructionLength: 4,
       signatures: [
@@ -9252,6 +10109,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsleu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsleuVv,
       instructionLength: 4,
       signatures: [
@@ -9270,6 +10128,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsle.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsleVv,
       instructionLength: 4,
       signatures: [
@@ -9288,6 +10147,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsaddu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVsadduVv,
       instructionLength: 4,
       signatures: [
@@ -9306,6 +10166,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsadd.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVsaddVv,
       instructionLength: 4,
       signatures: [
@@ -9324,6 +10185,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vssubu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVssubuVv,
       instructionLength: 4,
       signatures: [
@@ -9342,6 +10204,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vssub.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVssubVv,
       instructionLength: 4,
       signatures: [
@@ -9360,6 +10223,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsll.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVsllVv,
       instructionLength: 4,
       signatures: [
@@ -9378,6 +10242,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsmul.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVsmulVv,
       instructionLength: 4,
       signatures: [
@@ -9396,6 +10261,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsrl.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVsrlVv,
       instructionLength: 4,
       signatures: [
@@ -9414,6 +10280,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsra.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVsraVv,
       instructionLength: 4,
       signatures: [
@@ -9432,6 +10299,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vssrl.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVssrlVv,
       instructionLength: 4,
       signatures: [
@@ -9450,6 +10318,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vssra.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVssraVv,
       instructionLength: 4,
       signatures: [
@@ -9468,6 +10337,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnsrl.wv',
     {
+      requires: ['v'],
       encode: canonical.encodeVnsrlWv,
       instructionLength: 4,
       signatures: [
@@ -9486,6 +10356,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnsra.wv',
     {
+      requires: ['v'],
       encode: canonical.encodeVnsraWv,
       instructionLength: 4,
       signatures: [
@@ -9504,6 +10375,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnclipu.wv',
     {
+      requires: ['v'],
       encode: canonical.encodeVnclipuWv,
       instructionLength: 4,
       signatures: [
@@ -9522,6 +10394,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnclip.wv',
     {
+      requires: ['v'],
       encode: canonical.encodeVnclipWv,
       instructionLength: 4,
       signatures: [
@@ -9540,6 +10413,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwredsumu.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVwredsumuVs,
       instructionLength: 4,
       signatures: [
@@ -9558,6 +10432,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwredsum.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVwredsumVs,
       instructionLength: 4,
       signatures: [
@@ -9576,6 +10451,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vadd.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVaddVi,
       instructionLength: 4,
       signatures: [
@@ -9594,6 +10470,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vrsub.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVrsubVi,
       instructionLength: 4,
       signatures: [
@@ -9612,6 +10489,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vand.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVandVi,
       instructionLength: 4,
       signatures: [
@@ -9630,6 +10508,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vor.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVorVi,
       instructionLength: 4,
       signatures: [
@@ -9648,6 +10527,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vxor.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVxorVi,
       instructionLength: 4,
       signatures: [
@@ -9666,6 +10546,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vrgather.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVrgatherVi,
       instructionLength: 4,
       signatures: [
@@ -9684,6 +10565,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vslideup.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVslideupVi,
       instructionLength: 4,
       signatures: [
@@ -9702,6 +10584,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vslidedown.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVslidedownVi,
       instructionLength: 4,
       signatures: [
@@ -9720,6 +10603,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vadc.vim',
     {
+      requires: ['v'],
       encode: canonical.encodeVadcVim,
       instructionLength: 4,
       signatures: [
@@ -9737,6 +10621,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmadc.vim',
     {
+      requires: ['v'],
       encode: canonical.encodeVmadcVim,
       instructionLength: 4,
       signatures: [
@@ -9754,6 +10639,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmadc.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVmadcVi,
       instructionLength: 4,
       signatures: [
@@ -9771,6 +10657,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmerge.vim',
     {
+      requires: ['v'],
       encode: canonical.encodeVmergeVim,
       instructionLength: 4,
       signatures: [
@@ -9788,6 +10675,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmv.v.i',
     {
+      requires: ['v'],
       encode: canonical.encodeVmvVI,
       instructionLength: 4,
       signatures: [
@@ -9804,6 +10692,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmseq.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVmseqVi,
       instructionLength: 4,
       signatures: [
@@ -9822,6 +10711,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsne.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsneVi,
       instructionLength: 4,
       signatures: [
@@ -9840,6 +10730,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsleu.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsleuVi,
       instructionLength: 4,
       signatures: [
@@ -9858,6 +10749,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsle.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsleVi,
       instructionLength: 4,
       signatures: [
@@ -9876,6 +10768,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsgtu.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsgtuVi,
       instructionLength: 4,
       signatures: [
@@ -9894,6 +10787,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsgt.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsgtVi,
       instructionLength: 4,
       signatures: [
@@ -9912,6 +10806,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsaddu.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVsadduVi,
       instructionLength: 4,
       signatures: [
@@ -9930,6 +10825,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsadd.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVsaddVi,
       instructionLength: 4,
       signatures: [
@@ -9948,6 +10844,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsll.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVsllVi,
       instructionLength: 4,
       signatures: [
@@ -9966,6 +10863,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmv1r.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVmv1rV,
       instructionLength: 4,
       signatures: [
@@ -9982,6 +10880,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmv2r.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVmv2rV,
       instructionLength: 4,
       signatures: [
@@ -9998,6 +10897,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmv4r.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVmv4rV,
       instructionLength: 4,
       signatures: [
@@ -10014,6 +10914,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmv8r.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVmv8rV,
       instructionLength: 4,
       signatures: [
@@ -10030,6 +10931,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsrl.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVsrlVi,
       instructionLength: 4,
       signatures: [
@@ -10048,6 +10950,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsra.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVsraVi,
       instructionLength: 4,
       signatures: [
@@ -10066,6 +10969,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vssrl.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVssrlVi,
       instructionLength: 4,
       signatures: [
@@ -10084,6 +10988,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vssra.vi',
     {
+      requires: ['v'],
       encode: canonical.encodeVssraVi,
       instructionLength: 4,
       signatures: [
@@ -10102,6 +11007,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnsrl.wi',
     {
+      requires: ['v'],
       encode: canonical.encodeVnsrlWi,
       instructionLength: 4,
       signatures: [
@@ -10120,6 +11026,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnsra.wi',
     {
+      requires: ['v'],
       encode: canonical.encodeVnsraWi,
       instructionLength: 4,
       signatures: [
@@ -10138,6 +11045,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnclipu.wi',
     {
+      requires: ['v'],
       encode: canonical.encodeVnclipuWi,
       instructionLength: 4,
       signatures: [
@@ -10156,6 +11064,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnclip.wi',
     {
+      requires: ['v'],
       encode: canonical.encodeVnclipWi,
       instructionLength: 4,
       signatures: [
@@ -10174,6 +11083,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vredsum.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVredsumVs,
       instructionLength: 4,
       signatures: [
@@ -10192,6 +11102,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vredand.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVredandVs,
       instructionLength: 4,
       signatures: [
@@ -10210,6 +11121,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vredor.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVredorVs,
       instructionLength: 4,
       signatures: [
@@ -10228,6 +11140,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vredxor.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVredxorVs,
       instructionLength: 4,
       signatures: [
@@ -10246,6 +11159,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vredminu.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVredminuVs,
       instructionLength: 4,
       signatures: [
@@ -10264,6 +11178,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vredmin.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVredminVs,
       instructionLength: 4,
       signatures: [
@@ -10282,6 +11197,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vredmaxu.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVredmaxuVs,
       instructionLength: 4,
       signatures: [
@@ -10300,6 +11216,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vredmax.vs',
     {
+      requires: ['v'],
       encode: canonical.encodeVredmaxVs,
       instructionLength: 4,
       signatures: [
@@ -10318,6 +11235,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaaddu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVaadduVv,
       instructionLength: 4,
       signatures: [
@@ -10336,6 +11254,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaadd.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVaaddVv,
       instructionLength: 4,
       signatures: [
@@ -10354,6 +11273,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vasubu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVasubuVv,
       instructionLength: 4,
       signatures: [
@@ -10372,6 +11292,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vasub.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVasubVv,
       instructionLength: 4,
       signatures: [
@@ -10390,6 +11311,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmv.x.s',
     {
+      requires: ['v'],
       encode: canonical.encodeVmvXS,
       instructionLength: 4,
       signatures: [
@@ -10406,6 +11328,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vzext.vf8',
     {
+      requires: ['v'],
       encode: canonical.encodeVzextVf8,
       instructionLength: 4,
       signatures: [
@@ -10423,6 +11346,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsext.vf8',
     {
+      requires: ['v'],
       encode: canonical.encodeVsextVf8,
       instructionLength: 4,
       signatures: [
@@ -10440,6 +11364,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vzext.vf4',
     {
+      requires: ['v'],
       encode: canonical.encodeVzextVf4,
       instructionLength: 4,
       signatures: [
@@ -10457,6 +11382,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsext.vf4',
     {
+      requires: ['v'],
       encode: canonical.encodeVsextVf4,
       instructionLength: 4,
       signatures: [
@@ -10474,6 +11400,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vzext.vf2',
     {
+      requires: ['v'],
       encode: canonical.encodeVzextVf2,
       instructionLength: 4,
       signatures: [
@@ -10491,6 +11418,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsext.vf2',
     {
+      requires: ['v'],
       encode: canonical.encodeVsextVf2,
       instructionLength: 4,
       signatures: [
@@ -10508,6 +11436,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vcompress.vm',
     {
+      requires: ['v'],
       encode: canonical.encodeVcompressVm,
       instructionLength: 4,
       signatures: [
@@ -10525,6 +11454,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmandn.mm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmandnMm,
       instructionLength: 4,
       signatures: [
@@ -10542,6 +11472,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmand.mm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmandMm,
       instructionLength: 4,
       signatures: [
@@ -10559,6 +11490,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmor.mm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmorMm,
       instructionLength: 4,
       signatures: [
@@ -10576,6 +11508,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmxor.mm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmxorMm,
       instructionLength: 4,
       signatures: [
@@ -10593,6 +11526,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmorn.mm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmornMm,
       instructionLength: 4,
       signatures: [
@@ -10610,6 +11544,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmnand.mm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmnandMm,
       instructionLength: 4,
       signatures: [
@@ -10627,6 +11562,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmnor.mm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmnorMm,
       instructionLength: 4,
       signatures: [
@@ -10644,6 +11580,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmxnor.mm',
     {
+      requires: ['v'],
       encode: canonical.encodeVmxnorMm,
       instructionLength: 4,
       signatures: [
@@ -10661,6 +11598,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsbf.m',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsbfM,
       instructionLength: 4,
       signatures: [
@@ -10678,6 +11616,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsof.m',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsofM,
       instructionLength: 4,
       signatures: [
@@ -10695,6 +11634,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsif.m',
     {
+      requires: ['v'],
       encode: canonical.encodeVmsifM,
       instructionLength: 4,
       signatures: [
@@ -10712,6 +11652,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'viota.m',
     {
+      requires: ['v'],
       encode: canonical.encodeViotaM,
       instructionLength: 4,
       signatures: [
@@ -10729,6 +11670,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vid.v',
     {
+      requires: ['v'],
       encode: canonical.encodeVidV,
       instructionLength: 4,
       signatures: [
@@ -10745,6 +11687,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vcpop.m',
     {
+      requires: ['v'],
       encode: canonical.encodeVcpopM,
       instructionLength: 4,
       signatures: [
@@ -10762,6 +11705,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfirst.m',
     {
+      requires: ['v'],
       encode: canonical.encodeVfirstM,
       instructionLength: 4,
       signatures: [
@@ -10779,6 +11723,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vdivu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVdivuVv,
       instructionLength: 4,
       signatures: [
@@ -10797,6 +11742,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vdiv.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVdivVv,
       instructionLength: 4,
       signatures: [
@@ -10815,6 +11761,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vremu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVremuVv,
       instructionLength: 4,
       signatures: [
@@ -10833,6 +11780,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vrem.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVremVv,
       instructionLength: 4,
       signatures: [
@@ -10851,6 +11799,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmulhu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmulhuVv,
       instructionLength: 4,
       signatures: [
@@ -10869,6 +11818,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmul.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmulVv,
       instructionLength: 4,
       signatures: [
@@ -10887,6 +11837,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmulhsu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmulhsuVv,
       instructionLength: 4,
       signatures: [
@@ -10905,6 +11856,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmulh.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmulhVv,
       instructionLength: 4,
       signatures: [
@@ -10923,6 +11875,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmadd.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmaddVv,
       instructionLength: 4,
       signatures: [
@@ -10941,6 +11894,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnmsub.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVnmsubVv,
       instructionLength: 4,
       signatures: [
@@ -10959,6 +11913,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmacc.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVmaccVv,
       instructionLength: 4,
       signatures: [
@@ -10977,6 +11932,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnmsac.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVnmsacVv,
       instructionLength: 4,
       signatures: [
@@ -10995,6 +11951,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwaddu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwadduVv,
       instructionLength: 4,
       signatures: [
@@ -11013,6 +11970,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwadd.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwaddVv,
       instructionLength: 4,
       signatures: [
@@ -11031,6 +11989,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwsubu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwsubuVv,
       instructionLength: 4,
       signatures: [
@@ -11049,6 +12008,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwsub.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwsubVv,
       instructionLength: 4,
       signatures: [
@@ -11067,6 +12027,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwaddu.wv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwadduWv,
       instructionLength: 4,
       signatures: [
@@ -11085,6 +12046,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwadd.wv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwaddWv,
       instructionLength: 4,
       signatures: [
@@ -11103,6 +12065,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwsubu.wv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwsubuWv,
       instructionLength: 4,
       signatures: [
@@ -11121,6 +12084,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwsub.wv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwsubWv,
       instructionLength: 4,
       signatures: [
@@ -11139,6 +12103,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmulu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmuluVv,
       instructionLength: 4,
       signatures: [
@@ -11157,6 +12122,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmulsu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmulsuVv,
       instructionLength: 4,
       signatures: [
@@ -11175,6 +12141,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmul.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmulVv,
       instructionLength: 4,
       signatures: [
@@ -11193,6 +12160,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmaccu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmaccuVv,
       instructionLength: 4,
       signatures: [
@@ -11211,6 +12179,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmacc.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmaccVv,
       instructionLength: 4,
       signatures: [
@@ -11229,6 +12198,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmaccsu.vv',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmaccsuVv,
       instructionLength: 4,
       signatures: [
@@ -11247,6 +12217,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaaddu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVaadduVx,
       instructionLength: 4,
       signatures: [
@@ -11265,6 +12236,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaadd.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVaaddVx,
       instructionLength: 4,
       signatures: [
@@ -11283,6 +12255,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vasubu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVasubuVx,
       instructionLength: 4,
       signatures: [
@@ -11301,6 +12274,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vasub.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVasubVx,
       instructionLength: 4,
       signatures: [
@@ -11319,6 +12293,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmv.s.x',
     {
+      requires: ['v'],
       encode: canonical.encodeVmvSX,
       instructionLength: 4,
       signatures: [
@@ -11335,6 +12310,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vslide1up.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVslide1upVx,
       instructionLength: 4,
       signatures: [
@@ -11353,6 +12329,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vslide1down.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVslide1downVx,
       instructionLength: 4,
       signatures: [
@@ -11371,6 +12348,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vdivu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVdivuVx,
       instructionLength: 4,
       signatures: [
@@ -11389,6 +12367,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vdiv.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVdivVx,
       instructionLength: 4,
       signatures: [
@@ -11407,6 +12386,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vremu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVremuVx,
       instructionLength: 4,
       signatures: [
@@ -11425,6 +12405,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vrem.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVremVx,
       instructionLength: 4,
       signatures: [
@@ -11443,6 +12424,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmulhu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmulhuVx,
       instructionLength: 4,
       signatures: [
@@ -11461,6 +12443,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmul.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmulVx,
       instructionLength: 4,
       signatures: [
@@ -11479,6 +12462,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmulhsu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmulhsuVx,
       instructionLength: 4,
       signatures: [
@@ -11497,6 +12481,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmulh.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmulhVx,
       instructionLength: 4,
       signatures: [
@@ -11515,6 +12500,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmadd.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmaddVx,
       instructionLength: 4,
       signatures: [
@@ -11533,6 +12519,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnmsub.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVnmsubVx,
       instructionLength: 4,
       signatures: [
@@ -11551,6 +12538,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmacc.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVmaccVx,
       instructionLength: 4,
       signatures: [
@@ -11569,6 +12557,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnmsac.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVnmsacVx,
       instructionLength: 4,
       signatures: [
@@ -11587,6 +12576,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwaddu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwadduVx,
       instructionLength: 4,
       signatures: [
@@ -11605,6 +12595,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwadd.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwaddVx,
       instructionLength: 4,
       signatures: [
@@ -11623,6 +12614,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwsubu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwsubuVx,
       instructionLength: 4,
       signatures: [
@@ -11641,6 +12633,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwsub.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwsubVx,
       instructionLength: 4,
       signatures: [
@@ -11659,6 +12652,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwaddu.wx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwadduWx,
       instructionLength: 4,
       signatures: [
@@ -11677,6 +12671,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwadd.wx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwaddWx,
       instructionLength: 4,
       signatures: [
@@ -11695,6 +12690,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwsubu.wx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwsubuWx,
       instructionLength: 4,
       signatures: [
@@ -11713,6 +12709,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwsub.wx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwsubWx,
       instructionLength: 4,
       signatures: [
@@ -11731,6 +12728,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmulu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmuluVx,
       instructionLength: 4,
       signatures: [
@@ -11749,6 +12747,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmulsu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmulsuVx,
       instructionLength: 4,
       signatures: [
@@ -11767,6 +12766,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmul.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmulVx,
       instructionLength: 4,
       signatures: [
@@ -11785,6 +12785,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmaccu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmaccuVx,
       instructionLength: 4,
       signatures: [
@@ -11803,6 +12804,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmacc.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmaccVx,
       instructionLength: 4,
       signatures: [
@@ -11821,6 +12823,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmaccus.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmaccusVx,
       instructionLength: 4,
       signatures: [
@@ -11839,6 +12842,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwmaccsu.vx',
     {
+      requires: ['v'],
       encode: canonical.encodeVwmaccsuVx,
       instructionLength: 4,
       signatures: [
@@ -11857,6 +12861,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoswap.b',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmoswapB,
       instructionLength: 4,
       signatures: [
@@ -11876,6 +12881,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoadd.b',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmoaddB,
       instructionLength: 4,
       signatures: [
@@ -11895,6 +12901,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoxor.b',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmoxorB,
       instructionLength: 4,
       signatures: [
@@ -11914,6 +12921,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoand.b',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmoandB,
       instructionLength: 4,
       signatures: [
@@ -11933,6 +12941,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoor.b',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmoorB,
       instructionLength: 4,
       signatures: [
@@ -11952,6 +12961,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomin.b',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmominB,
       instructionLength: 4,
       signatures: [
@@ -11971,6 +12981,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomax.b',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmomaxB,
       instructionLength: 4,
       signatures: [
@@ -11990,6 +13001,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amominu.b',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmominuB,
       instructionLength: 4,
       signatures: [
@@ -12009,6 +13021,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomaxu.b',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmomaxuB,
       instructionLength: 4,
       signatures: [
@@ -12028,6 +13041,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoswap.h',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmoswapH,
       instructionLength: 4,
       signatures: [
@@ -12047,6 +13061,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoadd.h',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmoaddH,
       instructionLength: 4,
       signatures: [
@@ -12066,6 +13081,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoxor.h',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmoxorH,
       instructionLength: 4,
       signatures: [
@@ -12085,6 +13101,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoand.h',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmoandH,
       instructionLength: 4,
       signatures: [
@@ -12104,6 +13121,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amoor.h',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmoorH,
       instructionLength: 4,
       signatures: [
@@ -12123,6 +13141,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomin.h',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmominH,
       instructionLength: 4,
       signatures: [
@@ -12142,6 +13161,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomax.h',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmomaxH,
       instructionLength: 4,
       signatures: [
@@ -12161,6 +13181,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amominu.h',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmominuH,
       instructionLength: 4,
       signatures: [
@@ -12180,6 +13201,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amomaxu.h',
     {
+      requires: ['zabha'],
       encode: canonical.encodeAmomaxuH,
       instructionLength: 4,
       signatures: [
@@ -12199,6 +13221,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amocas.b',
     {
+      requires: ['zabha', 'zacas'],
       encode: canonical.encodeAmocasB,
       instructionLength: 4,
       signatures: [
@@ -12218,6 +13241,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amocas.h',
     {
+      requires: ['zabha', 'zacas'],
       encode: canonical.encodeAmocasH,
       instructionLength: 4,
       signatures: [
@@ -12237,6 +13261,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amocas.w',
     {
+      requires: ['zacas'],
       encode: canonical.encodeAmocasW,
       instructionLength: 4,
       signatures: [
@@ -12256,6 +13281,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'amocas.d',
     {
+      requires: ['zacas'],
       encode: canonical.encodeAmocasD,
       instructionLength: 4,
       signatures: [
@@ -12275,6 +13301,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lb.aq',
     {
+      requires: ['zalasr'],
       encode: canonical.encodeLbAq,
       instructionLength: 4,
       signatures: [
@@ -12292,6 +13319,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lh.aq',
     {
+      requires: ['zalasr'],
       encode: canonical.encodeLhAq,
       instructionLength: 4,
       signatures: [
@@ -12309,6 +13337,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lw.aq',
     {
+      requires: ['zalasr'],
       encode: canonical.encodeLwAq,
       instructionLength: 4,
       signatures: [
@@ -12326,6 +13355,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ld.aq',
     {
+      requires: ['zalasr'],
       encode: canonical.encodeLdAq,
       instructionLength: 4,
       signatures: [
@@ -12343,6 +13373,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sb.rl',
     {
+      requires: ['zalasr'],
       encode: canonical.encodeSbRl,
       instructionLength: 4,
       signatures: [
@@ -12360,6 +13391,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sh.rl',
     {
+      requires: ['zalasr'],
       encode: canonical.encodeShRl,
       instructionLength: 4,
       signatures: [
@@ -12377,6 +13409,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sw.rl',
     {
+      requires: ['zalasr'],
       encode: canonical.encodeSwRl,
       instructionLength: 4,
       signatures: [
@@ -12394,6 +13427,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sd.rl',
     {
+      requires: ['zalasr'],
       encode: canonical.encodeSdRl,
       instructionLength: 4,
       signatures: [
@@ -12411,6 +13445,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'wrs.nto',
     {
+      requires: ['zawrs'],
       encode: canonical.encodeWrsNto,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -12419,6 +13454,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'wrs.sto',
     {
+      requires: ['zawrs'],
       encode: canonical.encodeWrsSto,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -12427,6 +13463,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sh1add',
     {
+      requires: ['zba'],
       encode: canonical.encodeSh1add,
       instructionLength: 4,
       signatures: [
@@ -12444,6 +13481,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sh2add',
     {
+      requires: ['zba'],
       encode: canonical.encodeSh2add,
       instructionLength: 4,
       signatures: [
@@ -12461,6 +13499,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sh3add',
     {
+      requires: ['zba'],
       encode: canonical.encodeSh3add,
       instructionLength: 4,
       signatures: [
@@ -12478,6 +13517,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'andn',
     {
+      requires: ['zbb'],
       encode: canonical.encodeAndn,
       instructionLength: 4,
       signatures: [
@@ -12495,6 +13535,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'orn',
     {
+      requires: ['zbb'],
       encode: canonical.encodeOrn,
       instructionLength: 4,
       signatures: [
@@ -12512,6 +13553,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'xnor',
     {
+      requires: ['zbb'],
       encode: canonical.encodeXnor,
       instructionLength: 4,
       signatures: [
@@ -12529,6 +13571,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'clz',
     {
+      requires: ['zbb'],
       encode: canonical.encodeClz,
       instructionLength: 4,
       signatures: [
@@ -12545,6 +13588,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ctz',
     {
+      requires: ['zbb'],
       encode: canonical.encodeCtz,
       instructionLength: 4,
       signatures: [
@@ -12561,6 +13605,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cpop',
     {
+      requires: ['zbb'],
       encode: canonical.encodeCpop,
       instructionLength: 4,
       signatures: [
@@ -12577,6 +13622,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'max',
     {
+      requires: ['zbb'],
       encode: canonical.encodeMax,
       instructionLength: 4,
       signatures: [
@@ -12594,6 +13640,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'maxu',
     {
+      requires: ['zbb'],
       encode: canonical.encodeMaxu,
       instructionLength: 4,
       signatures: [
@@ -12611,6 +13658,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'min',
     {
+      requires: ['zbb'],
       encode: canonical.encodeMin,
       instructionLength: 4,
       signatures: [
@@ -12628,6 +13676,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'minu',
     {
+      requires: ['zbb'],
       encode: canonical.encodeMinu,
       instructionLength: 4,
       signatures: [
@@ -12645,6 +13694,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sext.b',
     {
+      requires: ['zbb'],
       encode: canonical.encodeSextB,
       instructionLength: 4,
       signatures: [
@@ -12661,6 +13711,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sext.h',
     {
+      requires: ['zbb'],
       encode: canonical.encodeSextH,
       instructionLength: 4,
       signatures: [
@@ -12677,6 +13728,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rol',
     {
+      requires: ['zbb'],
       encode: canonical.encodeRol,
       instructionLength: 4,
       signatures: [
@@ -12694,6 +13746,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ror',
     {
+      requires: ['zbb'],
       encode: canonical.encodeRor,
       instructionLength: 4,
       signatures: [
@@ -12711,6 +13764,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'orc.b',
     {
+      requires: ['zbb'],
       encode: canonical.encodeOrcB,
       instructionLength: 4,
       signatures: [
@@ -12727,6 +13781,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'clmul',
     {
+      requires: ['zbc'],
       encode: canonical.encodeClmul,
       instructionLength: 4,
       signatures: [
@@ -12744,6 +13799,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'clmulr',
     {
+      requires: ['zbc'],
       encode: canonical.encodeClmulr,
       instructionLength: 4,
       signatures: [
@@ -12761,6 +13817,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'clmulh',
     {
+      requires: ['zbc'],
       encode: canonical.encodeClmulh,
       instructionLength: 4,
       signatures: [
@@ -12778,6 +13835,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'pack',
     {
+      requires: ['zbkb'],
       encode: canonical.encodePack,
       instructionLength: 4,
       signatures: [
@@ -12795,6 +13853,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'packh',
     {
+      requires: ['zbkb'],
       encode: canonical.encodePackh,
       instructionLength: 4,
       signatures: [
@@ -12812,6 +13871,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'brev8',
     {
+      requires: ['zbkb'],
       encode: canonical.encodeBrev8,
       instructionLength: 4,
       signatures: [
@@ -12828,6 +13888,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'xperm4',
     {
+      requires: ['zbkx'],
       encode: canonical.encodeXperm4,
       instructionLength: 4,
       signatures: [
@@ -12845,6 +13906,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'xperm8',
     {
+      requires: ['zbkx'],
       encode: canonical.encodeXperm8,
       instructionLength: 4,
       signatures: [
@@ -12862,6 +13924,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bclr',
     {
+      requires: ['zbs'],
       encode: canonical.encodeBclr,
       instructionLength: 4,
       signatures: [
@@ -12879,6 +13942,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bext',
     {
+      requires: ['zbs'],
       encode: canonical.encodeBext,
       instructionLength: 4,
       signatures: [
@@ -12896,6 +13960,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'binv',
     {
+      requires: ['zbs'],
       encode: canonical.encodeBinv,
       instructionLength: 4,
       signatures: [
@@ -12913,6 +13978,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bset',
     {
+      requires: ['zbs'],
       encode: canonical.encodeBset,
       instructionLength: 4,
       signatures: [
@@ -12930,6 +13996,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.lbu',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCLbu,
       instructionLength: 2,
       signatures: [
@@ -12947,6 +14014,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.lhu',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCLhu,
       instructionLength: 2,
       signatures: [
@@ -12964,6 +14032,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.lh',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCLh,
       instructionLength: 2,
       signatures: [
@@ -12981,6 +14050,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.sb',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCSb,
       instructionLength: 2,
       signatures: [
@@ -12998,6 +14068,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.sh',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCSh,
       instructionLength: 2,
       signatures: [
@@ -13015,6 +14086,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.zext.b',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCZextB,
       instructionLength: 2,
       signatures: [
@@ -13028,6 +14100,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.sext.b',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCSextB,
       instructionLength: 2,
       signatures: [
@@ -13041,6 +14114,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.zext.h',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCZextH,
       instructionLength: 2,
       signatures: [
@@ -13054,6 +14128,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.sext.h',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCSextH,
       instructionLength: 2,
       signatures: [
@@ -13067,6 +14142,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.not',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCNot,
       instructionLength: 2,
       signatures: [
@@ -13080,6 +14156,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.mul',
     {
+      requires: ['zcb'],
       encode: canonical.encodeCMul,
       instructionLength: 2,
       signatures: [
@@ -13096,6 +14173,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'c.mop.N',
     {
+      requires: ['zcmop'],
       encode: canonical.encodeCMopN,
       instructionLength: 2,
       signatures: [
@@ -13109,6 +14187,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cm.push',
     {
+      requires: ['zcmp'],
       encode: canonical.encodeCmPush,
       instructionLength: 2,
       signatures: [
@@ -13125,6 +14204,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cm.pop',
     {
+      requires: ['zcmp'],
       encode: canonical.encodeCmPop,
       instructionLength: 2,
       signatures: [
@@ -13141,6 +14221,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cm.popretz',
     {
+      requires: ['zcmp'],
       encode: canonical.encodeCmPopretz,
       instructionLength: 2,
       signatures: [
@@ -13157,6 +14238,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cm.popret',
     {
+      requires: ['zcmp'],
       encode: canonical.encodeCmPopret,
       instructionLength: 2,
       signatures: [
@@ -13173,6 +14255,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cm.mvsa01',
     {
+      requires: ['zcmp'],
       encode: canonical.encodeCmMvsa01,
       instructionLength: 2,
       signatures: [
@@ -13189,6 +14272,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cm.mva01s',
     {
+      requires: ['zcmp'],
       encode: canonical.encodeCmMva01s,
       instructionLength: 2,
       signatures: [
@@ -13205,6 +14289,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cm.jalt',
     {
+      requires: ['zcmt'],
       encode: canonical.encodeCmJalt,
       instructionLength: 2,
       signatures: [
@@ -13218,6 +14303,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.bf16.s',
     {
+      requires: ['zfbfmin'],
       encode: canonical.encodeFcvtBf16S,
       instructionLength: 4,
       signatures: [
@@ -13235,6 +14321,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.s.bf16',
     {
+      requires: ['zfbfmin'],
       encode: canonical.encodeFcvtSBf16,
       instructionLength: 4,
       signatures: [
@@ -13252,6 +14339,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmadd.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFmaddH,
       instructionLength: 4,
       signatures: [
@@ -13271,6 +14359,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmsub.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFmsubH,
       instructionLength: 4,
       signatures: [
@@ -13290,6 +14379,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fnmsub.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFnmsubH,
       instructionLength: 4,
       signatures: [
@@ -13309,6 +14399,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fnmadd.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFnmaddH,
       instructionLength: 4,
       signatures: [
@@ -13328,6 +14419,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fadd.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFaddH,
       instructionLength: 4,
       signatures: [
@@ -13346,6 +14438,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsub.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFsubH,
       instructionLength: 4,
       signatures: [
@@ -13364,6 +14457,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmul.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFmulH,
       instructionLength: 4,
       signatures: [
@@ -13382,6 +14476,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fdiv.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFdivH,
       instructionLength: 4,
       signatures: [
@@ -13400,6 +14495,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsqrt.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFsqrtH,
       instructionLength: 4,
       signatures: [
@@ -13417,6 +14513,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnj.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFsgnjH,
       instructionLength: 4,
       signatures: [
@@ -13434,6 +14531,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnjn.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFsgnjnH,
       instructionLength: 4,
       signatures: [
@@ -13451,6 +14549,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsgnjx.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFsgnjxH,
       instructionLength: 4,
       signatures: [
@@ -13468,6 +14567,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmin.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFminH,
       instructionLength: 4,
       signatures: [
@@ -13485,6 +14585,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmax.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFmaxH,
       instructionLength: 4,
       signatures: [
@@ -13502,6 +14603,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'feq.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFeqH,
       instructionLength: 4,
       signatures: [
@@ -13519,6 +14621,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'flt.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFltH,
       instructionLength: 4,
       signatures: [
@@ -13536,6 +14639,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fle.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFleH,
       instructionLength: 4,
       signatures: [
@@ -13553,6 +14657,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fclass.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFclassH,
       instructionLength: 4,
       signatures: [
@@ -13569,6 +14674,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.w.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFcvtWH,
       instructionLength: 4,
       signatures: [
@@ -13586,6 +14692,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.wu.h',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFcvtWuH,
       instructionLength: 4,
       signatures: [
@@ -13603,6 +14710,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.h.w',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFcvtHW,
       instructionLength: 4,
       signatures: [
@@ -13620,6 +14728,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.h.wu',
     {
+      requires: ['zfh'],
       encode: canonical.encodeFcvtHWu,
       instructionLength: 4,
       signatures: [
@@ -13637,6 +14746,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fli.h',
     {
+      requires: ['zfh', 'zfa'],
       encode: canonical.encodeFliH,
       instructionLength: 4,
       signatures: [
@@ -13653,6 +14763,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fminm.h',
     {
+      requires: ['zfh', 'zfa'],
       encode: canonical.encodeFminmH,
       instructionLength: 4,
       signatures: [
@@ -13670,6 +14781,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmaxm.h',
     {
+      requires: ['zfh', 'zfa'],
       encode: canonical.encodeFmaxmH,
       instructionLength: 4,
       signatures: [
@@ -13687,6 +14799,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fround.h',
     {
+      requires: ['zfh', 'zfa'],
       encode: canonical.encodeFroundH,
       instructionLength: 4,
       signatures: [
@@ -13704,6 +14817,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'froundnx.h',
     {
+      requires: ['zfh', 'zfa'],
       encode: canonical.encodeFroundnxH,
       instructionLength: 4,
       signatures: [
@@ -13721,6 +14835,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fleq.h',
     {
+      requires: ['zfh', 'zfa'],
       encode: canonical.encodeFleqH,
       instructionLength: 4,
       signatures: [
@@ -13738,6 +14853,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fltq.h',
     {
+      requires: ['zfh', 'zfa'],
       encode: canonical.encodeFltqH,
       instructionLength: 4,
       signatures: [
@@ -13755,6 +14871,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'flh',
     {
+      requires: ['zfhmin'],
       encode: canonical.encodeFlh,
       instructionLength: 4,
       signatures: [
@@ -13772,6 +14889,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsh',
     {
+      requires: ['zfhmin'],
       encode: canonical.encodeFsh,
       instructionLength: 4,
       signatures: [
@@ -13790,6 +14908,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.s.h',
     {
+      requires: ['zfhmin'],
       encode: canonical.encodeFcvtSH,
       instructionLength: 4,
       signatures: [
@@ -13807,6 +14926,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fcvt.h.s',
     {
+      requires: ['zfhmin'],
       encode: canonical.encodeFcvtHS,
       instructionLength: 4,
       signatures: [
@@ -13824,6 +14944,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmv.x.h',
     {
+      requires: ['zfhmin'],
       encode: canonical.encodeFmvXH,
       instructionLength: 4,
       signatures: [
@@ -13840,6 +14961,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmv.h.x',
     {
+      requires: ['zfhmin'],
       encode: canonical.encodeFmvHX,
       instructionLength: 4,
       signatures: [
@@ -13856,6 +14978,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cbo.clean',
     {
+      requires: ['zicbo'],
       encode: canonical.encodeCboClean,
       instructionLength: 4,
       signatures: [
@@ -13869,6 +14992,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cbo.flush',
     {
+      requires: ['zicbo'],
       encode: canonical.encodeCboFlush,
       instructionLength: 4,
       signatures: [
@@ -13882,6 +15006,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cbo.inval',
     {
+      requires: ['zicbo'],
       encode: canonical.encodeCboInval,
       instructionLength: 4,
       signatures: [
@@ -13895,6 +15020,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'cbo.zero',
     {
+      requires: ['zicbo'],
       encode: canonical.encodeCboZero,
       instructionLength: 4,
       signatures: [
@@ -13908,6 +15034,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ssamoswap.w',
     {
+      requires: ['zicfiss'],
       encode: canonical.encodeSsamoswapW,
       instructionLength: 4,
       signatures: [
@@ -13927,6 +15054,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ssamoswap.d',
     {
+      requires: ['zicfiss'],
       encode: canonical.encodeSsamoswapD,
       instructionLength: 4,
       signatures: [
@@ -13946,6 +15074,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'czero.eqz',
     {
+      requires: ['zicond'],
       encode: canonical.encodeCzeroEqz,
       instructionLength: 4,
       signatures: [
@@ -13963,6 +15092,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'czero.nez',
     {
+      requires: ['zicond'],
       encode: canonical.encodeCzeroNez,
       instructionLength: 4,
       signatures: [
@@ -13980,6 +15110,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrrw',
     {
+      requires: ['zicsr'],
       encode: canonical.encodeCsrrw,
       instructionLength: 4,
       signatures: [
@@ -13997,6 +15128,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrrs',
     {
+      requires: ['zicsr'],
       encode: canonical.encodeCsrrs,
       instructionLength: 4,
       signatures: [
@@ -14014,6 +15146,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrrc',
     {
+      requires: ['zicsr'],
       encode: canonical.encodeCsrrc,
       instructionLength: 4,
       signatures: [
@@ -14031,6 +15164,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrrwi',
     {
+      requires: ['zicsr'],
       encode: canonical.encodeCsrrwi,
       instructionLength: 4,
       signatures: [
@@ -14048,6 +15182,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrrsi',
     {
+      requires: ['zicsr'],
       encode: canonical.encodeCsrrsi,
       instructionLength: 4,
       signatures: [
@@ -14065,6 +15200,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrrci',
     {
+      requires: ['zicsr'],
       encode: canonical.encodeCsrrci,
       instructionLength: 4,
       signatures: [
@@ -14082,9 +15218,18 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fence.i',
     {
+      requires: ['zifencei'],
       encode: canonical.encodeFenceI,
       instructionLength: 4,
       signatures: [
+        {
+          sourceSignature: [] as const,
+          encoderSignature: [
+            { type: 'constant', value: 0 },
+            { type: 'constant', value: 0 },
+            { type: 'constant', value: 0 },
+          ] as const,
+        },
         {
           sourceSignature: ['number', 'register', 'register'] as const,
           encoderSignature: [
@@ -14099,6 +15244,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'mop.r.N',
     {
+      requires: ['zimop'],
       encode: canonical.encodeMopRN,
       instructionLength: 4,
       signatures: [
@@ -14118,6 +15264,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'mop.rr.N',
     {
+      requires: ['zimop'],
       encode: canonical.encodeMopRrN,
       instructionLength: 4,
       signatures: [
@@ -14137,6 +15284,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sha256sum0',
     {
+      requires: ['zknh'],
       encode: canonical.encodeSha256sum0,
       instructionLength: 4,
       signatures: [
@@ -14153,6 +15301,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sha256sum1',
     {
+      requires: ['zknh'],
       encode: canonical.encodeSha256sum1,
       instructionLength: 4,
       signatures: [
@@ -14169,6 +15318,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sha256sig0',
     {
+      requires: ['zknh'],
       encode: canonical.encodeSha256sig0,
       instructionLength: 4,
       signatures: [
@@ -14185,6 +15335,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sha256sig1',
     {
+      requires: ['zknh'],
       encode: canonical.encodeSha256sig1,
       instructionLength: 4,
       signatures: [
@@ -14201,6 +15352,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sm4ed',
     {
+      requires: ['zksed'],
       encode: canonical.encodeSm4ed,
       instructionLength: 4,
       signatures: [
@@ -14219,6 +15371,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sm4ks',
     {
+      requires: ['zksed'],
       encode: canonical.encodeSm4ks,
       instructionLength: 4,
       signatures: [
@@ -14237,6 +15390,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sm3p0',
     {
+      requires: ['zksh'],
       encode: canonical.encodeSm3p0,
       instructionLength: 4,
       signatures: [
@@ -14253,6 +15407,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sm3p1',
     {
+      requires: ['zksh'],
       encode: canonical.encodeSm3p1,
       instructionLength: 4,
       signatures: [
@@ -14269,6 +15424,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vandn.vv',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVandnVv,
       instructionLength: 4,
       signatures: [
@@ -14287,6 +15443,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vandn.vx',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVandnVx,
       instructionLength: 4,
       signatures: [
@@ -14305,6 +15462,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vbrev.v',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVbrevV,
       instructionLength: 4,
       signatures: [
@@ -14322,6 +15480,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vbrev8.v',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVbrev8V,
       instructionLength: 4,
       signatures: [
@@ -14339,6 +15498,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vrev8.v',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVrev8V,
       instructionLength: 4,
       signatures: [
@@ -14356,6 +15516,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vclz.v',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVclzV,
       instructionLength: 4,
       signatures: [
@@ -14373,6 +15534,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vctz.v',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVctzV,
       instructionLength: 4,
       signatures: [
@@ -14390,6 +15552,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vcpop.v',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVcpopV,
       instructionLength: 4,
       signatures: [
@@ -14407,6 +15570,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vrol.vv',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVrolVv,
       instructionLength: 4,
       signatures: [
@@ -14425,6 +15589,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vrol.vx',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVrolVx,
       instructionLength: 4,
       signatures: [
@@ -14443,6 +15608,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vror.vv',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVrorVv,
       instructionLength: 4,
       signatures: [
@@ -14461,6 +15627,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vror.vx',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVrorVx,
       instructionLength: 4,
       signatures: [
@@ -14479,6 +15646,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vror.vi',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVrorVi,
       instructionLength: 4,
       signatures: [
@@ -14498,6 +15666,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwsll.vv',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVwsllVv,
       instructionLength: 4,
       signatures: [
@@ -14516,6 +15685,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwsll.vx',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVwsllVx,
       instructionLength: 4,
       signatures: [
@@ -14534,6 +15704,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwsll.vi',
     {
+      requires: ['zvbb'],
       encode: canonical.encodeVwsllVi,
       instructionLength: 4,
       signatures: [
@@ -14552,6 +15723,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vclmul.vv',
     {
+      requires: ['zvbc'],
       encode: canonical.encodeVclmulVv,
       instructionLength: 4,
       signatures: [
@@ -14570,6 +15742,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vclmul.vx',
     {
+      requires: ['zvbc'],
       encode: canonical.encodeVclmulVx,
       instructionLength: 4,
       signatures: [
@@ -14588,6 +15761,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vclmulh.vv',
     {
+      requires: ['zvbc'],
       encode: canonical.encodeVclmulhVv,
       instructionLength: 4,
       signatures: [
@@ -14606,6 +15780,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vclmulh.vx',
     {
+      requires: ['zvbc'],
       encode: canonical.encodeVclmulhVx,
       instructionLength: 4,
       signatures: [
@@ -14624,6 +15799,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfncvtbf16.f.f.w',
     {
+      requires: ['zvfbfmin'],
       encode: canonical.encodeVfncvtbf16FFW,
       instructionLength: 4,
       signatures: [
@@ -14641,6 +15817,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwcvtbf16.f.f.v',
     {
+      requires: ['zvfbfmin'],
       encode: canonical.encodeVfwcvtbf16FFV,
       instructionLength: 4,
       signatures: [
@@ -14658,6 +15835,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwmaccbf16.vv',
     {
+      requires: ['zvfbfwma'],
       encode: canonical.encodeVfwmaccbf16Vv,
       instructionLength: 4,
       signatures: [
@@ -14676,6 +15854,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfwmaccbf16.vf',
     {
+      requires: ['zvfbfwma'],
       encode: canonical.encodeVfwmaccbf16Vf,
       instructionLength: 4,
       signatures: [
@@ -14694,6 +15873,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vgmul.vv',
     {
+      requires: ['zvkg'],
       encode: canonical.encodeVgmulVv,
       instructionLength: 4,
       signatures: [
@@ -14710,6 +15890,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vghsh.vv',
     {
+      requires: ['zvkg'],
       encode: canonical.encodeVghshVv,
       instructionLength: 4,
       signatures: [
@@ -14727,6 +15908,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaesdf.vv',
     {
+      requires: ['zvkned'],
       encode: canonical.encodeVaesdfVv,
       instructionLength: 4,
       signatures: [
@@ -14743,6 +15925,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaesdf.vs',
     {
+      requires: ['zvkned'],
       encode: canonical.encodeVaesdfVs,
       instructionLength: 4,
       signatures: [
@@ -14759,6 +15942,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaesdm.vv',
     {
+      requires: ['zvkned'],
       encode: canonical.encodeVaesdmVv,
       instructionLength: 4,
       signatures: [
@@ -14775,6 +15959,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaesdm.vs',
     {
+      requires: ['zvkned'],
       encode: canonical.encodeVaesdmVs,
       instructionLength: 4,
       signatures: [
@@ -14791,6 +15976,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaesef.vv',
     {
+      requires: ['zvkned'],
       encode: canonical.encodeVaesefVv,
       instructionLength: 4,
       signatures: [
@@ -14807,6 +15993,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaesef.vs',
     {
+      requires: ['zvkned'],
       encode: canonical.encodeVaesefVs,
       instructionLength: 4,
       signatures: [
@@ -14823,6 +16010,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaesem.vv',
     {
+      requires: ['zvkned'],
       encode: canonical.encodeVaesemVv,
       instructionLength: 4,
       signatures: [
@@ -14839,6 +16027,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaesem.vs',
     {
+      requires: ['zvkned'],
       encode: canonical.encodeVaesemVs,
       instructionLength: 4,
       signatures: [
@@ -14855,6 +16044,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaesz.vs',
     {
+      requires: ['zvkned'],
       encode: canonical.encodeVaeszVs,
       instructionLength: 4,
       signatures: [
@@ -14871,6 +16061,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaeskf1.vi',
     {
+      requires: ['zvkned'],
       encode: canonical.encodeVaeskf1Vi,
       instructionLength: 4,
       signatures: [
@@ -14888,6 +16079,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vaeskf2.vi',
     {
+      requires: ['zvkned'],
       encode: canonical.encodeVaeskf2Vi,
       instructionLength: 4,
       signatures: [
@@ -14905,6 +16097,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsha2ms.vv',
     {
+      requires: ['zvknha'],
       encode: canonical.encodeVsha2msVv,
       instructionLength: 4,
       signatures: [
@@ -14922,6 +16115,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsha2ch.vv',
     {
+      requires: ['zvknha'],
       encode: canonical.encodeVsha2chVv,
       instructionLength: 4,
       signatures: [
@@ -14939,6 +16133,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsha2cl.vv',
     {
+      requires: ['zvknha'],
       encode: canonical.encodeVsha2clVv,
       instructionLength: 4,
       signatures: [
@@ -14956,6 +16151,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsm4k.vi',
     {
+      requires: ['zvksed'],
       encode: canonical.encodeVsm4kVi,
       instructionLength: 4,
       signatures: [
@@ -14973,6 +16169,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsm4r.vv',
     {
+      requires: ['zvksed'],
       encode: canonical.encodeVsm4rVv,
       instructionLength: 4,
       signatures: [
@@ -14989,6 +16186,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsm4r.vs',
     {
+      requires: ['zvksed'],
       encode: canonical.encodeVsm4rVs,
       instructionLength: 4,
       signatures: [
@@ -15005,6 +16203,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsm3c.vi',
     {
+      requires: ['zvksh'],
       encode: canonical.encodeVsm3cVi,
       instructionLength: 4,
       signatures: [
@@ -15022,6 +16221,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vsm3me.vv',
     {
+      requires: ['zvksh'],
       encode: canonical.encodeVsm3meVv,
       instructionLength: 4,
       signatures: [
@@ -15039,6 +16239,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'nop',
     {
+      requires: ['i'],
       encode: pseudo.encodeNop,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -15047,6 +16248,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'mv',
     {
+      requires: ['i'],
       encode: pseudo.encodeMv,
       instructionLength: 4,
       signatures: [
@@ -15063,6 +16265,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'not',
     {
+      requires: ['i'],
       encode: pseudo.encodeNot,
       instructionLength: 4,
       signatures: [
@@ -15079,6 +16282,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'neg',
     {
+      requires: ['i'],
       encode: pseudo.encodeNeg,
       instructionLength: 4,
       signatures: [
@@ -15095,6 +16299,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'negw',
     {
+      requires: ['i'],
       encode: pseudo.encodeNegw,
       instructionLength: 4,
       signatures: [
@@ -15111,6 +16316,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sext.w',
     {
+      requires: ['i'],
       encode: pseudo.encodeSextW,
       instructionLength: 4,
       signatures: [
@@ -15127,6 +16333,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'zext.b',
     {
+      requires: ['i'],
       encode: pseudo.encodeZextB,
       instructionLength: 4,
       signatures: [
@@ -15143,6 +16350,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'zext.h',
     {
+      requires: ['zbkb'],
       encode: pseudo.encodeZextH,
       instructionLength: 4,
       signatures: [
@@ -15159,6 +16367,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'zext.w',
     {
+      requires: ['zba'],
       encode: pseudo.encodeZextW,
       instructionLength: 4,
       signatures: [
@@ -15175,6 +16384,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'seqz',
     {
+      requires: ['i'],
       encode: pseudo.encodeSeqz,
       instructionLength: 4,
       signatures: [
@@ -15191,6 +16401,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'snez',
     {
+      requires: ['i'],
       encode: pseudo.encodeSnez,
       instructionLength: 4,
       signatures: [
@@ -15207,6 +16418,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sltz',
     {
+      requires: ['i'],
       encode: pseudo.encodeSltz,
       instructionLength: 4,
       signatures: [
@@ -15223,6 +16435,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sgtz',
     {
+      requires: ['i'],
       encode: pseudo.encodeSgtz,
       instructionLength: 4,
       signatures: [
@@ -15239,6 +16452,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sgt',
     {
+      requires: ['i'],
       encode: pseudo.encodeSgt,
       instructionLength: 4,
       signatures: [
@@ -15256,6 +16470,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'sgtu',
     {
+      requires: ['i'],
       encode: pseudo.encodeSgtu,
       instructionLength: 4,
       signatures: [
@@ -15273,6 +16488,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'li',
     {
+      requires: ['i'],
       encode: pseudo.encodeLi,
       instructionLength: (_rd: number, value: number | bigint): number =>
         BigInt(value) >= -2048n && BigInt(value) <= 2047n ? 4 : 44,
@@ -15290,6 +16506,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'la',
     {
+      requires: ['i'],
       encode: pseudo.encodeLa,
       instructionLength: 8,
       signatures: [
@@ -15301,12 +16518,22 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['register', 'address'] as const,
+          encoderSignature: [
+            { type: 'register', sourceOperand: 0 },
+            { type: 'generatedLabel', sourceOperand: 1 },
+            { type: 'number', sourceOperand: 1, relocationType: relocations.R_RISCV_PCREL_HI20 },
+            { type: 'number', sourceOperand: 1, relocationType: relocations.R_RISCV_PCREL_LO12_I },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'lla',
     {
+      requires: ['i'],
       encode: pseudo.encodeLla,
       instructionLength: 8,
       signatures: [
@@ -15324,6 +16551,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'lga',
     {
+      requires: ['i'],
       encode: pseudo.encodeLga,
       instructionLength: 8,
       signatures: [
@@ -15341,6 +16569,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'call',
     {
+      requires: ['i'],
       encode: pseudo.encodeCall,
       instructionLength: 8,
       signatures: [
@@ -15352,12 +16581,22 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 2 },
           ] as const,
         },
+        {
+          sourceSignature: ['address'] as const,
+          encoderSignature: [
+            { type: 'constant', value: 1 },
+            { type: 'generatedLabel', sourceOperand: 0 },
+            { type: 'number', sourceOperand: 0, relocationType: relocations.R_RISCV_PCREL_HI20 },
+            { type: 'number', sourceOperand: 0, relocationType: relocations.R_RISCV_PCREL_LO12_I },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'tail',
     {
+      requires: ['i'],
       encode: pseudo.encodeTail,
       instructionLength: 8,
       signatures: [
@@ -15368,12 +16607,21 @@ const INSTRUCTION_MAP: ReadonlyMap<
             { type: 'number', sourceOperand: 1 },
           ] as const,
         },
+        {
+          sourceSignature: ['address'] as const,
+          encoderSignature: [
+            { type: 'generatedLabel', sourceOperand: 0 },
+            { type: 'number', sourceOperand: 0, relocationType: relocations.R_RISCV_PCREL_HI20 },
+            { type: 'number', sourceOperand: 0, relocationType: relocations.R_RISCV_PCREL_LO12_I },
+          ] as const,
+        },
       ],
     },
   ],
   [
     'jump',
     {
+      requires: ['i'],
       encode: pseudo.encodeJump,
       instructionLength: 8,
       signatures: [
@@ -15391,6 +16639,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'j',
     {
+      requires: ['i'],
       encode: pseudo.encodeJ,
       instructionLength: 4,
       signatures: [
@@ -15406,6 +16655,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ret',
     {
+      requires: ['i'],
       encode: pseudo.encodeRet,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -15414,6 +16664,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'jr',
     {
+      requires: ['i'],
       encode: pseudo.encodeJr,
       instructionLength: 4,
       signatures: [
@@ -15427,6 +16678,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'beqz',
     {
+      requires: ['i'],
       encode: pseudo.encodeBeqz,
       instructionLength: 4,
       signatures: [
@@ -15444,6 +16696,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bnez',
     {
+      requires: ['i'],
       encode: pseudo.encodeBnez,
       instructionLength: 4,
       signatures: [
@@ -15461,6 +16714,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'blez',
     {
+      requires: ['i'],
       encode: pseudo.encodeBlez,
       instructionLength: 4,
       signatures: [
@@ -15478,6 +16732,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bgez',
     {
+      requires: ['i'],
       encode: pseudo.encodeBgez,
       instructionLength: 4,
       signatures: [
@@ -15495,6 +16750,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bltz',
     {
+      requires: ['i'],
       encode: pseudo.encodeBltz,
       instructionLength: 4,
       signatures: [
@@ -15512,6 +16768,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bgtz',
     {
+      requires: ['i'],
       encode: pseudo.encodeBgtz,
       instructionLength: 4,
       signatures: [
@@ -15529,6 +16786,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bgt',
     {
+      requires: ['i'],
       encode: pseudo.encodeBgt,
       instructionLength: 4,
       signatures: [
@@ -15547,6 +16805,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'ble',
     {
+      requires: ['i'],
       encode: pseudo.encodeBle,
       instructionLength: 4,
       signatures: [
@@ -15565,6 +16824,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bgtu',
     {
+      requires: ['i'],
       encode: pseudo.encodeBgtu,
       instructionLength: 4,
       signatures: [
@@ -15583,6 +16843,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'bleu',
     {
+      requires: ['i'],
       encode: pseudo.encodeBleu,
       instructionLength: 4,
       signatures: [
@@ -15601,6 +16862,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmv.h',
     {
+      requires: ['zfh'],
       encode: pseudo.encodeFmvH,
       instructionLength: 4,
       signatures: [
@@ -15617,6 +16879,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmv.s',
     {
+      requires: ['f'],
       encode: pseudo.encodeFmvS,
       instructionLength: 4,
       signatures: [
@@ -15633,6 +16896,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmv.d',
     {
+      requires: ['d'],
       encode: pseudo.encodeFmvD,
       instructionLength: 4,
       signatures: [
@@ -15649,6 +16913,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fmv.q',
     {
+      requires: ['q'],
       encode: pseudo.encodeFmvQ,
       instructionLength: 4,
       signatures: [
@@ -15665,6 +16930,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fabs.h',
     {
+      requires: ['zfh'],
       encode: pseudo.encodeFabsH,
       instructionLength: 4,
       signatures: [
@@ -15681,6 +16947,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fabs.s',
     {
+      requires: ['f'],
       encode: pseudo.encodeFabsS,
       instructionLength: 4,
       signatures: [
@@ -15697,6 +16964,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fabs.d',
     {
+      requires: ['d'],
       encode: pseudo.encodeFabsD,
       instructionLength: 4,
       signatures: [
@@ -15713,6 +16981,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fabs.q',
     {
+      requires: ['q'],
       encode: pseudo.encodeFabsQ,
       instructionLength: 4,
       signatures: [
@@ -15729,6 +16998,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fneg.h',
     {
+      requires: ['zfh'],
       encode: pseudo.encodeFnegH,
       instructionLength: 4,
       signatures: [
@@ -15745,6 +17015,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fneg.s',
     {
+      requires: ['f'],
       encode: pseudo.encodeFnegS,
       instructionLength: 4,
       signatures: [
@@ -15761,6 +17032,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fneg.d',
     {
+      requires: ['d'],
       encode: pseudo.encodeFnegD,
       instructionLength: 4,
       signatures: [
@@ -15777,6 +17049,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fneg.q',
     {
+      requires: ['q'],
       encode: pseudo.encodeFnegQ,
       instructionLength: 4,
       signatures: [
@@ -15793,6 +17066,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fgt.h',
     {
+      requires: ['zfh'],
       encode: pseudo.encodeFgtH,
       instructionLength: 4,
       signatures: [
@@ -15810,6 +17084,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fge.h',
     {
+      requires: ['zfh'],
       encode: pseudo.encodeFgeH,
       instructionLength: 4,
       signatures: [
@@ -15827,6 +17102,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fgt.s',
     {
+      requires: ['f'],
       encode: pseudo.encodeFgtS,
       instructionLength: 4,
       signatures: [
@@ -15844,6 +17120,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fge.s',
     {
+      requires: ['f'],
       encode: pseudo.encodeFgeS,
       instructionLength: 4,
       signatures: [
@@ -15861,6 +17138,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fgt.d',
     {
+      requires: ['d'],
       encode: pseudo.encodeFgtD,
       instructionLength: 4,
       signatures: [
@@ -15878,6 +17156,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fge.d',
     {
+      requires: ['d'],
       encode: pseudo.encodeFgeD,
       instructionLength: 4,
       signatures: [
@@ -15895,6 +17174,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fgt.q',
     {
+      requires: ['q'],
       encode: pseudo.encodeFgtQ,
       instructionLength: 4,
       signatures: [
@@ -15912,6 +17192,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fge.q',
     {
+      requires: ['q'],
       encode: pseudo.encodeFgeQ,
       instructionLength: 4,
       signatures: [
@@ -15929,6 +17210,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'pause',
     {
+      requires: ['i'],
       encode: pseudo.encodePause,
       instructionLength: 4,
       signatures: [{ sourceSignature: [] as const, encoderSignature: [] as const }],
@@ -15937,6 +17219,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rdcycle',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeRdcycle,
       instructionLength: 4,
       signatures: [
@@ -15950,6 +17233,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rdcycleh',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeRdcycleh,
       instructionLength: 4,
       signatures: [
@@ -15963,6 +17247,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rdtime',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeRdtime,
       instructionLength: 4,
       signatures: [
@@ -15976,6 +17261,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rdtimeh',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeRdtimeh,
       instructionLength: 4,
       signatures: [
@@ -15989,6 +17275,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rdinstret',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeRdinstret,
       instructionLength: 4,
       signatures: [
@@ -16002,6 +17289,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'rdinstreth',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeRdinstreth,
       instructionLength: 4,
       signatures: [
@@ -16015,6 +17303,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrr',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeCsrr,
       instructionLength: 4,
       signatures: [
@@ -16031,6 +17320,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrw',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeCsrw,
       instructionLength: 4,
       signatures: [
@@ -16047,6 +17337,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrs',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeCsrs,
       instructionLength: 4,
       signatures: [
@@ -16063,6 +17354,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrc',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeCsrc,
       instructionLength: 4,
       signatures: [
@@ -16079,6 +17371,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrwi',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeCsrwi,
       instructionLength: 4,
       signatures: [
@@ -16095,6 +17388,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrsi',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeCsrsi,
       instructionLength: 4,
       signatures: [
@@ -16111,6 +17405,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'csrci',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeCsrci,
       instructionLength: 4,
       signatures: [
@@ -16127,6 +17422,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'frcsr',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeFrcsr,
       instructionLength: 4,
       signatures: [
@@ -16140,6 +17436,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fscsr',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeFscsr,
       instructionLength: 4,
       signatures: [
@@ -16156,6 +17453,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'frrm',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeFrrm,
       instructionLength: 4,
       signatures: [
@@ -16169,6 +17467,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsrm',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeFsrm,
       instructionLength: 4,
       signatures: [
@@ -16185,6 +17484,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsrmi',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeFsrmi,
       instructionLength: 4,
       signatures: [
@@ -16201,6 +17501,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'frflags',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeFrflags,
       instructionLength: 4,
       signatures: [
@@ -16214,6 +17515,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsflags',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeFsflags,
       instructionLength: 4,
       signatures: [
@@ -16230,6 +17532,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'fsflagsi',
     {
+      requires: ['zicsr'],
       encode: pseudo.encodeFsflagsi,
       instructionLength: 4,
       signatures: [
@@ -16246,6 +17549,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfneg.v',
     {
+      requires: ['v'],
       encode: pseudo.encodeVfnegV,
       instructionLength: 4,
       signatures: [
@@ -16262,6 +17566,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vfabs.v',
     {
+      requires: ['v'],
       encode: pseudo.encodeVfabsV,
       instructionLength: 4,
       signatures: [
@@ -16278,6 +17583,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmclr.m',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmclrM,
       instructionLength: 4,
       signatures: [
@@ -16291,6 +17597,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmfge.vv',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmfgeVv,
       instructionLength: 4,
       signatures: [
@@ -16309,6 +17616,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmfgt.vv',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmfgtVv,
       instructionLength: 4,
       signatures: [
@@ -16327,6 +17635,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmmv.m',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmmvM,
       instructionLength: 4,
       signatures: [
@@ -16343,6 +17652,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmnot.m',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmnotM,
       instructionLength: 4,
       signatures: [
@@ -16359,6 +17669,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmset.m',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmsetM,
       instructionLength: 4,
       signatures: [
@@ -16372,6 +17683,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsge.vi',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmsgeVi,
       instructionLength: 4,
       signatures: [
@@ -16390,6 +17702,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsgeu.vi',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmsgeuVi,
       instructionLength: 4,
       signatures: [
@@ -16408,6 +17721,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsge.vv',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmsgeVv,
       instructionLength: 4,
       signatures: [
@@ -16426,6 +17740,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsgeu.vv',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmsgeuVv,
       instructionLength: 4,
       signatures: [
@@ -16444,6 +17759,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsgt.vv',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmsgtVv,
       instructionLength: 4,
       signatures: [
@@ -16462,6 +17778,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsgtu.vv',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmsgtuVv,
       instructionLength: 4,
       signatures: [
@@ -16480,6 +17797,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmslt.vi',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmsltVi,
       instructionLength: 4,
       signatures: [
@@ -16498,6 +17816,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsltu.vi',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmsltuVi,
       instructionLength: 4,
       signatures: [
@@ -16516,6 +17835,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vneg.v',
     {
+      requires: ['v'],
       encode: pseudo.encodeVnegV,
       instructionLength: 4,
       signatures: [
@@ -16532,6 +17852,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vnot.v',
     {
+      requires: ['v'],
       encode: pseudo.encodeVnotV,
       instructionLength: 4,
       signatures: [
@@ -16549,6 +17870,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vncvt.x.x.w',
     {
+      requires: ['v'],
       encode: pseudo.encodeVncvtXXW,
       instructionLength: 4,
       signatures: [
@@ -16566,6 +17888,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwcvt.x.x.v',
     {
+      requires: ['v'],
       encode: pseudo.encodeVwcvtXXV,
       instructionLength: 4,
       signatures: [
@@ -16583,6 +17906,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vwcvtu.x.x.v',
     {
+      requires: ['v'],
       encode: pseudo.encodeVwcvtuXXV,
       instructionLength: 4,
       signatures: [
@@ -16600,6 +17924,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl1r.v',
     {
+      requires: ['v'],
       encode: pseudo.encodeVl1rV,
       instructionLength: 4,
       signatures: [
@@ -16616,6 +17941,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl2r.v',
     {
+      requires: ['v'],
       encode: pseudo.encodeVl2rV,
       instructionLength: 4,
       signatures: [
@@ -16632,6 +17958,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl4r.v',
     {
+      requires: ['v'],
       encode: pseudo.encodeVl4rV,
       instructionLength: 4,
       signatures: [
@@ -16648,6 +17975,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vl8r.v',
     {
+      requires: ['v'],
       encode: pseudo.encodeVl8rV,
       instructionLength: 4,
       signatures: [
@@ -16664,6 +17992,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsge.vx',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmsgeVx,
       instructionLength: 8,
       signatures: [
@@ -16681,6 +18010,7 @@ const INSTRUCTION_MAP: ReadonlyMap<
   [
     'vmsgeu.vx',
     {
+      requires: ['v'],
       encode: pseudo.encodeVmsgeuVx,
       instructionLength: 8,
       signatures: [

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveOperands } from '#instructions';
+import { resolveOperands, selectSignature } from '#instructions';
 import type { InstructionSignature } from '#instructions';
 
 const emptySymbols = new Map<string, number>();
-const noContext = { address: 0, symbols: emptySymbols };
+// These unit signatures carry no mnemonic of their own; the label only
+// reaches metadata diagnostics.
+const noContext = { address: 0, symbols: emptySymbols, mnemonic: 'test' };
 
 // Helper: a single-register signature
 const regSig: InstructionSignature = {
@@ -64,7 +66,7 @@ test('resolveNumber literal', () => {
 
 test('resolveNumber symbol', () => {
   const symbols = new Map([['myval', 42]]);
-  const result = resolveOperands(['myval'], numSig, { address: 0, symbols });
+  const result = resolveOperands(['myval'], numSig, { address: 0, symbols, mnemonic: 'test' });
   assert.strictEqual(result[0], 42);
 });
 
@@ -82,7 +84,7 @@ test('resolveNumber relative through address offset', () => {
       { type: 'address', sourceOperand: 0, addressPart: 'offset', relative: true },
     ],
   };
-  const result = resolveOperands(['target'], relSig, { address: 16, symbols });
+  const result = resolveOperands(['target'], relSig, { address: 16, symbols, mnemonic: 'test' });
   assert.strictEqual(result[0], -8);
 });
 
@@ -95,6 +97,114 @@ test('resolveOperands constant', () => {
   };
   const result = resolveOperands([], constSig, noContext);
   assert.deepEqual(result, [1]);
+});
+
+// ── numberPart: compressed immediate bit fields ──
+
+const numberPartSig = (
+  fields: readonly (readonly [number, number])[],
+  signed: boolean,
+  nonzero = false
+): InstructionSignature => ({
+  sourceSignature: ['number'],
+  encoderSignature: fields.map((bits) => ({
+    type: 'numberPart' as const,
+    sourceOperand: 0,
+    bits,
+    signed,
+    nonzero,
+  })),
+});
+
+// c.li's signed imm[5:0] is split across imm[4:0] and imm[5], so the union covers
+// bits 0..5.
+const ciSig = numberPartSig(
+  [
+    [0, 4],
+    [5, 5],
+  ],
+  true
+);
+
+test("numberPart splits immediates with two's-complement arithmetic", () => {
+  // c.li a0, -1 encodes imm[4:0]=0x1f and imm[5]=1.
+  assert.deepEqual(resolveOperands(['-1'], ciSig, noContext), [0x1f, 1]);
+  // c.li a0, -32 keeps the sign in bit 5 and leaves imm[4:0] clear.
+  assert.deepEqual(resolveOperands(['-32'], ciSig, noContext), [0, 1]);
+});
+
+test('numberPart rejects immediates that do not fit its field', () => {
+  // 100 and 63 exceed the 5-bit field's signed range of -16..15.
+  assert.throws(
+    () => resolveOperands(['100'], numberPartSig([[0, 4]], true), noContext),
+    /not encodable/
+  );
+  assert.throws(
+    () => resolveOperands(['63'], numberPartSig([[0, 4]], true), noContext),
+    /not encodable/
+  );
+  // The same field read as unsigned holds 0..31.
+  assert.deepEqual(resolveOperands(['31'], numberPartSig([[0, 4]], false), noContext), [31]);
+  assert.throws(
+    () => resolveOperands(['32'], numberPartSig([[0, 4]], false), noContext),
+    /not encodable/
+  );
+});
+
+test('numberPart rejects zero for a union that declares nonzero', () => {
+  // c.lui and c.addi4spn reserve zero, so the union rejects it before the
+  // alignment and range checks.  Other unions keep accepting zero.
+  const luiSig = numberPartSig(
+    [
+      [17, 17],
+      [12, 16],
+    ],
+    true,
+    true
+  );
+  assert.throws(
+    () => resolveOperands(['0'], luiSig, noContext),
+    /immediate 0 is not encodable: this encoding requires a nonzero immediate/
+  );
+  assert.deepEqual(resolveOperands(['4096'], luiSig, noContext), [0, 1]);
+  assert.deepEqual(resolveOperands(['0'], ciSig, noContext), [0, 0]);
+});
+
+test('numberPart rejects a union that mixes signed and unsigned fields', () => {
+  const mixedSig: InstructionSignature = {
+    sourceSignature: ['number'],
+    encoderSignature: [
+      { type: 'numberPart', sourceOperand: 0, bits: [0, 4], signed: true, nonzero: false },
+      { type: 'numberPart', sourceOperand: 0, bits: [5, 5], signed: false, nonzero: false },
+    ],
+  };
+  assert.throws(
+    () => resolveOperands(['1'], mixedSig, noContext),
+    /internal metadata error: test declares both signed and unsigned numberPart fields for operand 0/
+  );
+});
+
+test('numberPart rejects immediates with nonzero bits below the union', () => {
+  // c.lui's imm[17:12] union starts at bit 12: the value is scaled by 4096.
+  const luiSig = numberPartSig(
+    [
+      [17, 17],
+      [12, 16],
+    ],
+    true
+  );
+  assert.throws(
+    () => resolveOperands(['1'], luiSig, noContext),
+    /immediate 1 is misaligned: bits 0\.\.11 must be zero/
+  );
+  assert.deepEqual(resolveOperands(['4096'], luiSig, noContext), [0, 1]);
+  // c.addi4spn's single imm[9:2] field starts at bit 2.
+  const addi4spnSig = numberPartSig([[2, 9]], false);
+  assert.throws(
+    () => resolveOperands(['5'], addi4spnSig, noContext),
+    /immediate 5 is misaligned: bits 0\.\.1 must be zero/
+  );
+  assert.deepEqual(resolveOperands(['4'], addi4spnSig, noContext), [1]);
 });
 
 // ── address: offset(base) ──
@@ -191,7 +301,7 @@ test('resolveAddress jumpOffset from literal', () => {
 
 test('resolveAddress branchOffset with symbol resolves relative', () => {
   const symbols = new Map([['target', 0x1008]]);
-  const ctx = { address: 0x1000, symbols };
+  const ctx = { address: 0x1000, symbols, mnemonic: 'test' };
   const branchSig: InstructionSignature = {
     sourceSignature: ['address'],
     encoderSignature: [
@@ -216,4 +326,53 @@ test('resolveAddress malformed text with addressPart base returns 0', () => {
   };
   const result = resolveOperands(['x2'], badBaseSig, noContext);
   assert.strictEqual(result[0], 0);
+});
+
+// ── signature selection ──
+
+const rawNumberSig: InstructionSignature = {
+  sourceSignature: ['number', 'number'],
+  encoderSignature: [
+    { type: 'number', sourceOperand: 0 },
+    { type: 'number', sourceOperand: 1 },
+  ],
+};
+const storeSpSig: InstructionSignature = {
+  sourceSignature: ['register', 'address'],
+  encoderSignature: [
+    { type: 'register', sourceOperand: 0 },
+    { type: 'address', sourceOperand: 1, addressPart: 'cOffsetSpWord', relative: false },
+  ],
+};
+
+test('selectSignature prefers the register/address form over the raw number form', () => {
+  const selected = selectSignature([rawNumberSig, storeSpSig], ['a0', '4(sp)']);
+  assert.strictEqual(selected, storeSpSig);
+});
+
+test('selectSignature keeps the raw number form for register-free operands', () => {
+  const selected = selectSignature([rawNumberSig, storeSpSig], ['10', '4']);
+  assert.strictEqual(selected, rawNumberSig);
+});
+
+test('selectSignature treats an offset(base) operand as compatible with address', () => {
+  const addressSig: InstructionSignature = {
+    sourceSignature: ['address'],
+    encoderSignature: [
+      { type: 'address', sourceOperand: 0, addressPart: 'offset', relative: false },
+    ],
+  };
+  assert.strictEqual(selectSignature([addressSig], ['4(badreg)']), addressSig);
+  assert.strictEqual(selectSignature([addressSig], ['%hi(sym)']), addressSig);
+  assert.strictEqual(selectSignature([addressSig], ['sym']), addressSig);
+});
+
+test('selectSignature falls back to the first arity match when no shape fits', () => {
+  // A register is neither a raw number nor a complete address operand.
+  assert.strictEqual(selectSignature([rawNumberSig, storeSpSig], ['a0', 'sp']), rawNumberSig);
+});
+
+test('selectSignature returns undefined when no signature has that arity', () => {
+  assert.strictEqual(selectSignature([storeSpSig], []), undefined);
+  assert.strictEqual(selectSignature([storeSpSig], ['x1']), undefined);
 });
